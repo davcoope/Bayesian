@@ -9,7 +9,7 @@ import numpy as np
 import logging
 
 class BO:
-    def __init__(self, log_path, KernelFunction, AcquisitionFunction, bounds, n_samples, length_scale, max_kappa, min_kappa, output_directory, iterations_between_reducing_bounds, first_reduce_bounds, reduce_bounds_factor, random_seed=52, stuck_in_peak_flag=False):
+    def __init__(self, KernelFunction, AcquisitionFunction, bounds, n_samples, max_kappa, min_kappa, length_scale=None,log_path=None, random_seed=52, dynamic_bounds=False, iterations_between_reducing_bounds=None, first_reduce_bounds=None, reduce_bounds_factor=None):
         """
         Initialize the Bayesian optimisation (BO) class with various parameters.
  
@@ -36,7 +36,6 @@ class BO:
         self.log_path = log_path
 
         self.Kernel = KernelFunction
-        self.length_scale = length_scale
 
         self.AcquisitionFunction = AcquisitionFunction
         self.max_kappa = max_kappa
@@ -44,8 +43,9 @@ class BO:
 
         self.bounds = bounds
         self.n_samples = n_samples
-        
-        self.output_directory = output_directory
+
+        self.mean = None
+        self.variance = None
 
         self.X_data = np.array([])
         self.y_data = np.array([])
@@ -55,63 +55,19 @@ class BO:
         self.stuck_in_peak_counter = 0
         self.current_best_value = 0
 
-        """ Optional flag for below """
         self.random_seed = random_seed
-        self.iterations_between_reducing_bounds = iterations_between_reducing_bounds
-        self.first_reduce_bounds = first_reduce_bounds
-        self.reduce_bounds_factor = reduce_bounds_factor
-        self.bounds_reduction_counter = 0
 
-    # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
-                                                
-    # ==============----------------- -- -- -- - - Logging -- -- -- -- -------------------================ #            
+        self.dynamic_bounds = dynamic_bounds
 
-    def CreateLogger(self):
-        """
-        Create a logger for the optimisation process.
+        if log_path is not None:
+            self.CreateLogger(self.log_path)
 
-        This function checks if a log file already exists. If it does, the program exits
-        to prevent overwriting. If not, a new logger is created and configured.
-
-        Raises:
-        - SystemExit: If the log file already exists.
-        """
-
-        # Check if the log file exists
-        if os.path.exists(self.log_path):
-            print(f"Error: The log file at {self.log_path} already exists. Quitting the experiment.")
-            sys.exit(1)  # Exit to prevent overwriting the log file
-
-        # Setup logger and set level to INFO
-        self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
-
-        # Setup Log_handler - set mode to 'w' to write
-        log_handler = logging.FileHandler(self.log_path, mode='w')
-        log_handler.setLevel(logging.INFO)
-
-        # Define the log format (preamble before your message is displayed)
-        log_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        log_handler.setFormatter(log_format)
-
-        # Add the handler to the logger object so you can start writing to the log file
-        self.logger.addHandler(log_handler)
-
-        self.logger.info('The log has been created')
-
-
-    def LogCurrentStatus(self):
-        """
-        Log the current status of the optimisation process.
-
-        This method logs the best value found so far, the corresponding X values, 
-        the number of random X values used, and how many times the bounds have been reduced.
-        """
-        self.logger.info(f'Current best y value was {self.BestData()[1][0]}; the corresponding X values were {self.X_data[self.BestData()[0][0]]}')
-        self.logger.info(f'Current number of random X values is {self.random_counter}')
-        self.logger.info(f'The bounds have been reduced {self.bounds_reduction_counter} times')
-        self.logger.info('')
-        self.logger.info('')
+        if self.dynamic_bounds==True:
+            self.length_scale = length_scale
+            self.iterations_between_reducing_bounds = iterations_between_reducing_bounds
+            self.first_reduce_bounds = first_reduce_bounds
+            self.reduce_bounds_factor = reduce_bounds_factor
+            self.bounds_reduction_counter = 0
 
     # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
 
@@ -249,24 +205,24 @@ class BO:
         - raw_X (2D array): The new input parameters to append.
         - raw_y (1D array): The new output results to append.
         """
+
+        # If X_data is empty, initialize it with raw_X. Otherwise, concatenate raw_X to the existing X_data array
         if self.X_data.size == 0:
-            # If X_data is empty, initialize it with raw_X
             self.X_data = raw_X
         else:
-            # Otherwise, concatenate raw_X to the existing X_data array
             self.X_data = np.concatenate((self.X_data, raw_X), axis=0)
 
+        # Same for y
         if self.y_data.size == 0:
-            # If y_data is empty, initialize it with raw_y
             self.y_data = raw_y.flatten()
         else:
-            # Otherwise, append the flattened raw_y to the existing y_data array
             self.y_data = np.append(self.y_data, raw_y.flatten())
 
         self.iteration_number += 1
         
-        # if self.stuck_in_peak_flag==True:
-
+        if self.dynamic_bounds==True:
+            self.StuckInPeak()
+            self.ReduceBounds()
 
 
     def UpdateDataCSV(self, csv_file):
@@ -310,7 +266,7 @@ class BO:
         return
     
 
-    def WriteOutputToCSV(self, raw_X, raw_y, iteration_number):
+    def WriteOutputToCSV(self, csv_path, raw_X, raw_y, iteration_number):
         """
         Write the simulation results to a CSV file.
 
@@ -323,7 +279,6 @@ class BO:
         - raw_y (1D array): The output results corresponding to the input parameters.
         - iteration_number (int): The current iteration number, used to tag the data.
         """
-        self.csv_file = '%s/Results.csv' %self.output_directory  # Define the path to the CSV file
 
         # Create arrays for iteration numbers and simulation numbers
         iteration_numbers = np.full(len(raw_X), iteration_number)
@@ -344,11 +299,11 @@ class BO:
         df = pd.DataFrame(data)
 
         # Check if the CSV file exists, if not, create it and write the headers
-        if not os.path.isfile(self.csv_file):
-            df.to_csv(self.csv_file, index=False)
+        if not os.path.isfile(csv_path):
+            df.to_csv(csv_path, index=False)
         else:
             # Append new data to the existing CSV file
-            df.to_csv(self.csv_file, mode='a', header=False, index=False)
+            df.to_csv(csv_path, mode='a', header=False, index=False)
 
         self.logger.info('csv file updated.')
 
@@ -370,7 +325,7 @@ class BO:
         """
 
         # Compute the kernel matrix with the jitter term added
-        K = self.Kernel(self.X_data, self.X_data, self.length_scale) + jitter * np.eye(len(self.X_data))
+        K = self.Kernel(self.X_data, self.X_data) + jitter * np.eye(len(self.X_data))
 
         # Calculate the inverse of the kernel matrix
         inverting_start_time = time.time()  # Record start time for inversion
@@ -382,7 +337,7 @@ class BO:
 
         return K_inv
 
-    def PredictMeanVariance(self, K_inv, candidate_x, jitter=1e-7):
+    def PredictMeanVariance(self, candidate_x, K_inv=None, jitter=1e-7):
         """
         Predict the mean and standard deviation of the objective function.
 
@@ -390,13 +345,15 @@ class BO:
         the objective function at random points within the specified bounds.
         """
 
-        jitter = 1e-7  # Small jitter value for numerical stability
+        if K_inv is None:
+            K_inv = self.InverseKernel()
 
-        K_star = self.Kernel(self.X_data, candidate_x, self.length_scale)
-        K_star_star = self.Kernel(candidate_x, candidate_x, self.length_scale) + jitter
+        K_star = self.Kernel(self.X_data, candidate_x)
+        K_star_star = self.Kernel(candidate_x, candidate_x) + jitter
 
-        # Normalize the observed data
-        normalized_y_data = self.y_data / np.max(self.y_data)
+        # Shift and Normalize the observed data
+        shifted_y_data = self.y_data - np.min(self.y_data)
+        normalized_y_data = shifted_y_data / np.max(shifted_y_data)
 
         # Predict the mean of the new point
         mean = K_star.T.dot(K_inv).dot(normalized_y_data)  
@@ -439,39 +396,13 @@ class BO:
             self.logger.info(f"An error occurred: {e}")   
 
         return kappa
+    
 
-    def UniquenessCheck(self, X, raw_X, iteration_number, simulation_number):
-        """
-        Ensure the generated point is unique within the batch.
 
-        This method checks if the generated point already exists within the current batch. 
-        If it does, a new point is generated until a unique one is found or a limit is reached. 
-        If the limit is reached, a random point is generated.
+    # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
+                                                
+    # ==============----------------- -- -- - Bounds Reduction - -- -- -------------------================ #   
 
-        Parameters:
-        - X (1D array): The generated point to be checked for uniqueness.
-        - raw_X (2D array): The array of points already generated in the batch.
-        - iteration_number (int): The current iteration number.
-        - simulation_number (int): The index of the simulation in the current batch.
-
-        Returns:
-        - np.ndarray: A unique point for the batch.
-        """
-        counter = 0
-        next_point = X
-
-        # Loop until a unique point is found or a limit is reached
-        while list(X) in raw_X:
-            self.logger.info(f'Iteration {iteration_number}, simulation {simulation_number} produced a point that already exists...recalculating X values. Attempt {counter+1}')
-            next_point = self.GetNextX(simulation_number)
-            counter += 1
-            if counter > 9:
-                self.random_counter += 1
-                self.logger.info(f'Random X values being used. This has been done {self.random_counter} times so far')
-                next_point = np.array([np.random.uniform(low, high) for (low, high) in self.bounds])
-                break
-
-        return next_point
 
     def StuckInPeak(self):
         """
@@ -590,3 +521,90 @@ class BO:
         sorted_indices, sorted_values = zip(*sorted_indices_and_values)
 
         return(sorted_indices, sorted_values)
+    
+
+
+    # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
+                                                
+    # ==============----------------- -- -- -- - - Logging -- -- -- -- -------------------================ #            
+
+    def CreateLogger(self):
+        """
+        Create a logger for the optimisation process.
+
+        This function checks if a log file already exists. If it does, the program exits
+        to prevent overwriting. If not, a new logger is created and configured.
+
+        Raises:
+        - SystemExit: If the log file already exists.
+        """
+
+        # Check if the log file exists
+        if os.path.exists(self.log_path):
+            print(f"Error: The log file at {self.log_path} already exists. Quitting the experiment.")
+            sys.exit(1)  # Exit to prevent overwriting the log file
+
+        # Setup logger and set level to INFO
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+
+        # Setup Log_handler - set mode to 'w' to write
+        log_handler = logging.FileHandler(self.log_path, mode='w')
+        log_handler.setLevel(logging.INFO)
+
+        # Define the log format (preamble before your message is displayed)
+        log_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        log_handler.setFormatter(log_format)
+
+        # Add the handler to the logger object so you can start writing to the log file
+        self.logger.addHandler(log_handler)
+
+        self.logger.info('The log has been created')
+
+
+    def LogCurrentStatus(self):
+        """
+        Log the current status of the optimisation process.
+
+        This method logs the best value found so far, the corresponding X values, 
+        the number of random X values used, and how many times the bounds have been reduced.
+        """
+        self.logger.info(f'Current best y value was {self.BestData()[1][0]}; the corresponding X values were {self.X_data[self.BestData()[0][0]]}')
+        self.logger.info(f'Current number of random X values is {self.random_counter}')
+        self.logger.info(f'The bounds have been reduced {self.bounds_reduction_counter} times')
+        self.logger.info('')
+        self.logger.info('')
+
+
+    # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
+                                                
+    # ==============----------------- -- -- -- - - Kernels - - -- -- -- -------------------================ #         
+
+def RBF_Kernel(X1, X2, length_scale):
+    """
+    Radial Basis Function (RBF) kernel.
+
+    Args:
+        X1 (np.ndarray): First set of points.
+        X2 (np.ndarray): Second set of points.
+        length_scale (float): The length scale parameter.
+        variance (float): The variance parameter.
+
+    Returns:
+        np.ndarray: The kernel matrix.
+    """
+    sqdist = np.sum(X1**2, 1).reshape(-1, 1) + np.sum(X2**2, 1) - 2 * np.dot(X1, X2.T)
+    return np.exp(-0.5 / length_scale**2 * sqdist)
+
+
+def MaternKernel(X1, X2, length_scale, nu=0.1):
+    return 0
+
+
+
+    # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
+                                                
+    # ==============----------------- -- -- Acquisition Functions - -- -------------------================ #    
+
+def UCB(kappa):
+    return 0
