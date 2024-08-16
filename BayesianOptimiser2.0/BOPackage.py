@@ -396,7 +396,6 @@ class BO:
             self.logger.info(f"An error occurred: {e}")   
 
         return kappa
-    
 
 
     # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
@@ -521,7 +520,6 @@ class BO:
         sorted_indices, sorted_values = zip(*sorted_indices_and_values)
 
         return(sorted_indices, sorted_values)
-    
 
 
     # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
