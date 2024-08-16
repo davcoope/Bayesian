@@ -135,7 +135,7 @@ class BO:
         self.logger.info(f'Getting X values for the random iteration')
         self.logger.info('')
 
-        raw_X = np.array([ np.array([np.random.uniform(low, high) for (low, high) in self.bounds]) for i in range(batch_size)])
+        raw_X = np.array([np.array([np.random.uniform(lower_bound, upper_bound) for (lower_bound, upper_bound) in self.bounds]) for i in range(batch_size)])
 
         optimiser_end_time = time.time()  # Record end time for optimisation
         self.logger.info(f'The time taken to get all X values for the random iteration was {(optimiser_end_time-optimiser_start_time)/60} minutes.')
@@ -177,7 +177,7 @@ class BO:
         return next_X
     
 
-    def GetNextXBatch(self, batch_size):
+    def GetNextXBatch(self, batch_size, sub_batch_size=None):
         """
         Get the next batch of input parameters for the objective function.
 
@@ -196,15 +196,37 @@ class BO:
         self.logger.info(f'Getting X values for this iteration')
         self.logger.info('')
 
-        raw_X = np.empty(batch_size)  # Initialize the list to store the batch of X values
+        if sub_batch_size is None:
 
-        K_inv = self.InverseKernel()
+            raw_X = np.empty((batch_size,len(self.bounds)))  # Initialize the list to store the batch of X values
 
-        for i in range(batch_size):
-            # Calculate kappa for the current simulation within the batch and use this in the acquisition function.
-            kappa = self.CalculateKappa(i)
+            K_inv = self.InverseKernel()
 
-            raw_X[i] = self.GetNextX(kappa, K_inv=K_inv)
+            for i in range(batch_size):
+                # Calculate kappa for the current simulation within the batch and use this in the acquisition function.
+                kappa = self.CalculateKappa(batch_size, i)
+
+                raw_X[i] = self.GetNextX(kappa, K_inv=K_inv)
+
+        if sub_batch_size:
+
+            for i in range(np.ceil(batch_size / sub_batch_size)):
+
+                raw_X = np.empty((sub_batch_size,len(self.bounds)))
+                
+                raw_y = np.empty(sub_batch_size)
+
+                K_inv = self.InverseKernel()
+
+                for i in range(sub_batch_size):
+
+                    kappa = self.CalculateKappa(sub_batch_size, i)
+
+                    raw_X[i] = self.GetNextX(kappa, K_inv=K_inv)
+
+                self.UpdateData(raw_X, raw_y)
+
+            self.y_data = self.y_data[:-batch_size]
 
         optimiser_end_time = time.time()  # Record end time for optimisation
         self.logger.info(f'The time taken to get all X values for this iteration was {(optimiser_end_time-optimiser_start_time)/60} minutes.')
@@ -261,16 +283,18 @@ class BO:
         df = pd.read_csv(csv_file)
 
         # Extract the Y data from the DataFrame
-        self.y_data.extend(df['Result'].values)
+        self.y_data = np.append(self.y_data, df['Result'].values)
 
-        # Calculate the current number of iterations
-        current_number_iterations = int(len(self.y_data) / self.batch_size)
+        csv_data_length = len(df['Result'].values)
 
-        # Extract the X data from the DataFrame
-        self.X_data.extend(np.zeros((current_number_iterations * self.batch_size, len(self.bounds))).tolist())
-        for i in range(current_number_iterations * self.batch_size):
+        # Initialize a zero array for the new X data with the correct shape
+        self.X_data = np.concatenate((self.X_data, np.zeros((csv_data_length, len(self.bounds)))), axis=0)
+
+        # Loop over each row of the newly added data and each column (each dimension of X)
+        for i in range(csv_data_length):
             for k in range(len(self.bounds)):
-                self.X_data[current_number_iterations+i][k] = df[f'X{k}'][i]
+                # Fill in the X data with the values from the DataFrame
+                self.X_data[len(self.y_data) - csv_data_length +i][k] = df[f'X{k}'][i]
 
 
     def LoadOptimiser(self, object_file_path):
@@ -385,7 +409,7 @@ class BO:
 
         return mean, var
     
-    def CalculateKappa(self,current_simulation_number):
+    def CalculateKappa(self,batch_size, current_simulation_number):
         """
         Compute the UCB parameter kappa for the current batch.
 
@@ -400,12 +424,12 @@ class BO:
         """
         try:
             # Check if batch_size is equal to 1
-            if self.batch_size == 1:
+            if batch_size == 1:
                 # Compute kappa as the average of max_kappa and min_kappa
                 kappa = (self.max_kappa - self.min_kappa) / 2
             else:
                 # Calculate the exponential factor 'b'
-                b = 1/(self.batch_size-1) * np.log(self.max_kappa / self.min_kappa)
+                b = 1/(batch_size-1) * np.log(self.max_kappa / self.min_kappa)
 
                 # Calculate kappa using an exponential function
                 kappa = self.min_kappa * np.exp(b*current_simulation_number)
