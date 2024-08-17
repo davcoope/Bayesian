@@ -60,7 +60,7 @@ class BO:
         self.random_seed = random_seed
 
         if self.log_path is not None:
-            self.CreateLogger(self.log_path)
+            self.CreateLogger()
 
         self.dynamic_bounds = dynamic_bounds
         if self.dynamic_bounds==True:
