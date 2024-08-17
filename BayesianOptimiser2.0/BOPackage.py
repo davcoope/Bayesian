@@ -9,33 +9,38 @@ import numpy as np
 import logging
 
 class BO:
-    def __init__(self, KernelFunction, AcquisitionFunction, bounds, n_samples, max_kappa, min_kappa, length_scale=None,log_path=None, random_seed=52, dynamic_bounds=False, iterations_between_reducing_bounds=None, first_reduce_bounds=None, reduce_bounds_factor=None):
+    def __init__(self, KernelFunction, length_scale, AcquisitionFunction, max_kappa, min_kappa, bounds, n_samples, log_path=None, dynamic_bounds=False, iterations_between_reducing_bounds=None, first_reduce_bounds=None, reduce_bounds_factor=None, random_seed=52):
         """
         Initialize the Bayesian optimisation (BO) class with various parameters.
  
         Parameters:
-        - log_path (str): Path to the log file.
         - KernelFunction (function): Function representing the kernel used in the Gaussian Process.
+        - length_scale (float): The length scale of the kernel.
         - AcquisitionFunction (function): Function to calculate the acquisition value.
-        - bounds (2D array): 2D array representing the bounds of each dimension.
-        - n_samples (int): Number of samples to take. These are the candidate points. 
-        - length_scale (float): The length scale for the kernel.
-        - iterations (int): Number of iterations to run the optimisation.
-        - batch_size (int): Number of samples per batch.
         - max_kappa (float): Maximum kappa value for exploration-exploitation balance.
         - min_kappa (float): Minimum kappa value.
-        - output_directory (str): Directory to save outputs.
-        - iterations_between_reducing_bounds (int): Number of iterations before reducing bounds.
-        - first_reduce_bounds (int): Number of initial iterations before starting to reduce bounds.
-        - reduce_bounds_factor (float): Factor by which to reduce bounds.
+        - bounds (2D array): 2D array representing the bounds of each dimension.
+        - n_samples (int): Number of samples to take. These are the candidate points. 
 
         Optional Parameters:
+
+        Logging:
+        - log_path (str): Path to the log file. No logging is done if log_path=None
+
+        Dynamic Bounds:
+        - dynamic_bounds (bool): Logical flag to use dynamic bounds
+        - iterations_between_reducing_bounds (int): Only used if dynamic_bounds=True. Number of iterations without increasing maximum Y until the bounds are reduced.
+        - first_reduce_bounds (int): Only used if dynamic_bounds=True. Minimum number of iterations before starting to reduce bounds.
+        - reduce_bounds_factor (float): Only used if dynamic_bounds=True. Factor by which to reduce bounds.
+
+        Random Seed:
         - random_seed (int): Seed for random number generation.
         """
 
         self.log_path = log_path
 
         self.Kernel = KernelFunction
+        self.length_scale = length_scale
 
         self.AcquisitionFunction = AcquisitionFunction
         self.max_kappa = max_kappa
@@ -44,30 +49,28 @@ class BO:
         self.bounds = bounds
         self.n_samples = n_samples
 
+        self.iteration_number = 0
+
         self.mean = None
         self.variance = None
 
         self.X_data = np.array([])
         self.y_data = np.array([])
 
-        self.iteration_number = 0
-        self.random_counter = 0
-        self.stuck_in_peak_counter = 0
-        self.current_best_value = 0
-
         self.random_seed = random_seed
 
-        self.dynamic_bounds = dynamic_bounds
-
-        if log_path is not None:
+        if self.log_path is not None:
             self.CreateLogger(self.log_path)
 
+        self.dynamic_bounds = dynamic_bounds
         if self.dynamic_bounds==True:
-            self.length_scale = length_scale
             self.iterations_between_reducing_bounds = iterations_between_reducing_bounds
             self.first_reduce_bounds = first_reduce_bounds
             self.reduce_bounds_factor = reduce_bounds_factor
+
             self.bounds_reduction_counter = 0
+            self.stuck_in_peak_counter = 0
+
 
     # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
 
@@ -84,18 +87,21 @@ class BO:
         - raw_X (2D array): Randomly generated X values for the batch.
         """
 
+        if self.log_path is not None:
+            optimiser_start_time = time.time()  # Record start time for optimisation
+            self.logger.info(f'Getting batch of random X values.')
+            self.logger.info('')
+
         # Set the random seed for reproducibility
         np.random.seed(self.random_seed)
 
-        optimiser_start_time = time.time()  # Record start time for optimisation
-        self.logger.info(f'Getting X values for the random iteration')
-        self.logger.info('')
-
         raw_X = np.array([np.array([np.random.uniform(lower_bound, upper_bound) for (lower_bound, upper_bound) in self.bounds]) for i in range(batch_size)])
 
-        optimiser_end_time = time.time()  # Record end time for optimisation
-        self.logger.info(f'The time taken to get all X values for the random iteration was {(optimiser_end_time-optimiser_start_time)/60} minutes.')
-        self.logger.info('')
+
+        if self.log_path is not None:
+            optimiser_end_time = time.time()  # Record end time for optimisation
+            self.logger.info(f'The time taken to get all X values for the random iteration was {(optimiser_end_time-optimiser_start_time)/60} minutes.')
+            self.logger.info('')
 
         return raw_X
     
@@ -114,14 +120,14 @@ class BO:
         - np.ndarray: The next set of input parameters (X).
         """
 
-        if K_inv == None:
+        if K_inv is None:
             K_inv = self.InverseKernel()
 
         # Generate a set of 'n_samples' candidate points from random samples within the bounds.
         candidate_x = np.random.uniform(self.bounds[:, 0], self.bounds[:, 1], size=(self.n_samples, self.bounds.shape[0]))
 
         # Predict the mean and std at each of these points.
-        self.mean, self.variance = self.PredictMeanVariance(K_inv, candidate_x)
+        self.mean, self.variance = self.PredictMeanVariance(candidate_x, K_inv=K_inv)
 
         # Draw samples from the posterior using the acquisition function
         candidate_y = self.AcquisitionFunction(self.mean, np.sqrt(self.variance), kappa)
@@ -147,10 +153,11 @@ class BO:
         Returns:
         - np.ndarray: The next batch of input parameters (X).
         """
-        optimiser_start_time = time.time()  # Record start time for optimisation
 
-        self.logger.info(f'Getting X values for this iteration')
-        self.logger.info('')
+        if self.log_path is not None:
+            optimiser_start_time = time.time()  # Record start time for optimisation
+            self.logger.info(f'Getting X values for this iteration')
+            self.logger.info('')
 
         if sub_batch_size is None:
 
@@ -180,13 +187,21 @@ class BO:
 
                     raw_X[i] = self.GetNextX(kappa, K_inv=K_inv)
 
+    # ==============----------------- !!!!!!!!!!! -------------------================ #
+    # We can't use UpdateData here. This will increase iteration numbers, check stuck #
+    # in peak counters and everything. We also haven't set raw_Y to the mean at raw_X #
+    # currently raw_Y is still np.empty(sub_batch_size).                              #
+    # ==============----------------- !!!!!!!!!!! -------------------================ #
+
                 self.UpdateData(raw_X, raw_y)
 
             self.y_data = self.y_data[:-batch_size]
 
-        optimiser_end_time = time.time()  # Record end time for optimisation
-        self.logger.info(f'The time taken to get all X values for this iteration was {(optimiser_end_time-optimiser_start_time)/60} minutes.')
-        self.logger.info('')
+
+        if self.log_path is not None:
+            optimiser_end_time = time.time()  # Record end time for optimisation
+            self.logger.info(f'The time taken to get all X values for this iteration was {(optimiser_end_time-optimiser_start_time)/60} minutes.')
+            self.logger.info('')
 
         return raw_X
 
@@ -219,6 +234,9 @@ class BO:
             self.y_data = np.append(self.y_data, raw_y.flatten())
 
         self.iteration_number += 1
+
+        if self.log_path is not None:
+            self.LogCurrentStatus()
         
         if self.dynamic_bounds==True:
             self.StuckInPeak()
@@ -305,7 +323,8 @@ class BO:
             # Append new data to the existing CSV file
             df.to_csv(csv_path, mode='a', header=False, index=False)
 
-        self.logger.info('csv file updated.')
+        if self.log_path is not None:
+            self.logger.info('csv file updated.')
 
 
     # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
@@ -325,15 +344,19 @@ class BO:
         """
 
         # Compute the kernel matrix with the jitter term added
-        K = self.Kernel(self.X_data, self.X_data) + jitter * np.eye(len(self.X_data))
+        K = self.Kernel(self.X_data, self.X_data, self.length_scale) + jitter * np.eye(len(self.X_data))
 
-        # Calculate the inverse of the kernel matrix
-        inverting_start_time = time.time()  # Record start time for inversion
-        K_inv = np.linalg.inv(self.K)
-        inverting_end_time = time.time()  # Record end time for inversion
+        if self.log_path is not None:
+            inverting_start_time = time.time()  # Record start time for inversion
+
         
-        # Log the time taken to invert the kernel matrix for the current iteration
-        self.logger.info(f'It took {inverting_end_time-inverting_start_time} to invert the kernel.')
+        # Calculate the inverse of the kernel matrix
+        K_inv = np.linalg.inv(K)
+
+        # Log the time taken to invert the kernel matrix
+        if self.log_path is not None:
+            inverting_end_time = time.time()
+            self.logger.info(f'It took {inverting_end_time-inverting_start_time} to invert the kernel.')
 
         return K_inv
 
@@ -348,8 +371,8 @@ class BO:
         if K_inv is None:
             K_inv = self.InverseKernel()
 
-        K_star = self.Kernel(self.X_data, candidate_x)
-        K_star_star = self.Kernel(candidate_x, candidate_x) + jitter
+        K_star = self.Kernel(self.X_data, candidate_x, self.length_scale)
+        K_star_star = self.Kernel(candidate_x, candidate_x, self.length_scale) + jitter
 
         # Shift and Normalize the observed data
         shifted_y_data = self.y_data - np.min(self.y_data)
@@ -393,7 +416,8 @@ class BO:
 
         # Handle any exceptions that occur during the try block
         except Exception as e:
-            self.logger.info(f"An error occurred: {e}")   
+            if self.log_path is not None:
+                self.logger.info(f"An error occurred: {e}")   
 
         return kappa
 
@@ -428,7 +452,9 @@ class BO:
         else:
             self.stuck_in_peak_flag = 1  # Stuck in a peak
             self.stuck_in_peak_counter += 1  # Increment the counter
-            self.logger.info('The Optimiser has become stuck at a peak')  # Log the event
+
+            if self.log_path is not None:
+                self.logger.info('The Optimiser has become stuck at a peak')  # Log the event
     
     def FindBounds(self, number, range):
         """
@@ -474,7 +500,9 @@ class BO:
         Parameters:
         - iteration_number (int): The current iteration number.
         """
-        self.logger.info(f'Stuck in peak counter is: {self.stuck_in_peak_counter}')
+
+        if self.log_path is not None:
+            self.logger.info(f'Stuck in peak counter is: {self.stuck_in_peak_counter}')
 
         # Reduce the search bounds if stuck in a peak and past the first_reduce_bounds threshold
         if self.stuck_in_peak_counter >= self.iterations_between_reducing_bounds and self.iteration_number >= self.first_reduce_bounds:
@@ -484,12 +512,14 @@ class BO:
             self.length_scale = self.length_scale * self.reduce_bounds_factor  # Reduce the length scale proportionally to the bounds
             
             # Calculate the new bounds for this dimension using the current best X value and the spread
-            bounds = []
+            bounds = np.empty([len(bounds), 2])
             for i in range(len(self.bounds)):
-                bounds.append(self.FindBounds(self.X_data[self.BestData()[0][0]][i],spread))
+                bounds[i] = self.FindBounds(self.X_data[self.BestData()[0][0]][i],spread)
             self.bounds = np.array(bounds)
 
-            self.logger.info(f'New bounds are {self.bounds}')
+
+            if self.log_path is not None:
+                self.logger.info(f'New bounds are {self.bounds}')
 
     def BestData(self):
         """
@@ -511,7 +541,7 @@ class BO:
         largest_indices = heapq.nlargest(number_indices, range(len(self.y_data)), key=self.y_data.__getitem__)
         
         # Retrieve the Y values for these indices
-        largest_values = [self.y_data[i] for i in largest_indices]
+        largest_values = np.array([self.y_data[i] for i in largest_indices])
 
         # Sort the indices and values into value order
         sorted_indices_and_values = sorted(zip(largest_indices, largest_values), key=lambda x: x[1], reverse=True)
@@ -568,7 +598,6 @@ class BO:
         the number of random X values used, and how many times the bounds have been reduced.
         """
         self.logger.info(f'Current best y value was {self.BestData()[1][0]}; the corresponding X values were {self.X_data[self.BestData()[0][0]]}')
-        self.logger.info(f'Current number of random X values is {self.random_counter}')
         self.logger.info(f'The bounds have been reduced {self.bounds_reduction_counter} times')
         self.logger.info('')
         self.logger.info('')
@@ -604,5 +633,20 @@ def MaternKernel(X1, X2, length_scale, nu=0.1):
                                                 
     # ==============----------------- -- -- Acquisition Functions - -- -------------------================ #    
 
-def UCB(kappa):
-    return 0
+def UCB(mean, standard_deviation, kappa):
+    """
+    Compute the acquisition value for a given set of parameters.
+
+    This function calculates the acquisition value using the Upper Confidence Bound (UCB) method.
+    The acquisition value is determined by combining the predicted mean, the standard deviation, 
+    and a kappa value that balances exploration and exploitation.
+
+    Parameters:
+    - mean (float): The predicted mean value of the objective function.
+    - standard_deviation (float): The standard deviation (uncertainty) of the prediction.
+    - kappa (float): A parameter that controls the trade-off between exploration and exploitation.
+
+    Returns:
+    - float: The acquisition value, which is used to guide the selection of the next sample point.
+    """
+    return mean + kappa * standard_deviation
