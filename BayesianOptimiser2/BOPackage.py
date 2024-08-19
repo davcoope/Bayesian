@@ -188,8 +188,9 @@ class BO:
                 K_inv = self.InverseKernel()
 
                 for i in range(batch_size):
-                    # Calculate kappa for the current simulation within the batch and use this in the acquisition function.
-                    kappa = self.CalculateKappa(batch_size, i)
+                    if max_kappa is not None and min_kappa is not None:
+                        # Calculate kappa for the current simulation within the batch and use this in the acquisition function.
+                        kappa = self.CalculateKappa(batch_size, i, max_kappa, min_kappa)
 
                     raw_X[i] = self.GetNextX(kappa, K_inv=K_inv)
 
@@ -219,17 +220,11 @@ class BO:
 
                         sub_raw_y[j] = normalised_y * np.max(self.y_data) + np.min(self.y_data)
 
-                    # If X_data is empty, initialize it with raw_X. Otherwise, concatenate raw_X to the existing X_data array
-                    if self.X_data.size == 0:
-                        self.X_data = sub_raw_X
-                    else:
-                        self.X_data = np.concatenate((self.X_data, sub_raw_X), axis=0)
+                    # Concatenate raw_X to the existing X_data array
+                    self.X_data = np.concatenate((self.X_data, sub_raw_X), axis=0)
 
                     # Same for y
-                    if self.y_data.size == 0:
-                        self.y_data = sub_raw_y
-                    else:
-                        self.y_data = np.append(self.y_data, sub_raw_y)
+                    self.y_data = np.append(self.y_data, sub_raw_y)
 
                     print(self.y_data)
                     print()
@@ -660,25 +655,28 @@ class BO:
         self.logger.info('')
         self.logger.info('')
 
-    # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
-                                                
-    # ==============----------------- -- -- - - - Plotting - - - -- -- -------------------================ #   
+# ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
+                                            
+# ==============----------------- -- -- - - - Plotting - - - -- -- -------------------================ #   
 
-def SausagePlot(object, resolution=1000):
+def SausagePlot(object, highlight_recent = 0, resolution=1000):
 
     if len(object.bounds) == 1:
 
         sample_points = np.linspace(0, 1, resolution, endpoint=True)
 
-        mean, varience = object.PredictMeanVariance(sample_points.reshape(resolution,1))
+        mean, variance = object.PredictMeanVariance(sample_points.reshape(resolution,1))
 
         plt.plot(sample_points, mean)
-        plt.fill_between(sample_points, mean - 1.96 * np.sqrt(varience), mean + 1.96 * np.sqrt(varience), color = 'blue', alpha=0.2, label = '95% confidence interval')
+        plt.fill_between(sample_points, mean - 1.96 * np.sqrt(variance), mean + 1.96 * np.sqrt(variance), color = 'blue', alpha=0.2, label = '95% confidence interval')
 
         shifted_y_data = object.y_data - np.min(object.y_data)
         normalized_y_data = shifted_y_data / np.max(shifted_y_data)
 
         plt.scatter(object.X_data, normalized_y_data, s=10)
+        
+        if highlight_recent != 0:
+            plt.scatter(object.X_data[-highlight_recent:], normalized_y_data[-highlight_recent:], s=30, color='red')
 
         # Display the plot
         plt.show()
@@ -687,10 +685,89 @@ def SausagePlot(object, resolution=1000):
 
         print('Can only produce sausage plots of one dimensional functions.')
 
+def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points, max_kappa, min_kappa, resolution=1000):
+    """
+    Visualize the acquisition function for a range of kappa values.
 
-    # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
-                                                
-    # ==============----------------- -- -- -- - - Kernels - - -- -- -- -------------------================ #         
+    This function calculates and plots the acquisition function for a specified number of 
+    kappa values. It generates candidate X points, calculates the corresponding Y values, 
+    and identifies the maximum Y value for each kappa. The results are plotted to help 
+    visualize the acquisition function and its dependency on the kappa value.
+
+    Parameters:
+    - object (object): The object that contains methods to calculate kappa, mean, and variance.
+    - number_kappas (int): The number of kappa values to test.
+    - number_candidate_points (int): The number of candidate X points to sample.
+    - max_kappa (float): The maximum kappa value.
+    - min_kappa (float): The minimum kappa value.
+    - resolution (int): The number of points used to sample the acquisition function. Default is 1000.
+    """
+
+    # Function requires a one dimensional optimisation problem
+    if len(object.bounds) == 1:
+
+        kappas = np.empty(number_kappas)  # Initialize an empty array to store kappa values
+        
+        # Calculate kappa values for the specified range
+        for i in range(number_kappas):
+            kappas[i] = object.CalculateKappa(number_kappas, i, max_kappa, min_kappa)
+
+        # Generate evenly spaced sample points between the bounds
+        sample_points = np.concatenate([np.linspace(lower_bound, upper_bound, resolution, endpoint=True) for (lower_bound, upper_bound) in object.bounds])
+        
+        # Predict the mean and variance for the sample points
+        mean, variance = object.PredictMeanVariance(sample_points.reshape(resolution,1))
+
+        # Normalize the Y data for plotting
+        shifted_y_data = object.y_data - np.min(object.y_data)
+        normalized_y_data = shifted_y_data / np.max(shifted_y_data)
+
+        # Plot the normalized data points on the graph
+        plt.scatter(object.X_data, normalized_y_data, s=10)
+
+        # Iterate through each kappa value to calculate the acquisition function
+        for i in range(number_kappas):
+            candidate_X = np.empty(number_candidate_points)  # Initialize array to store candidate X points
+            candidate_y = np.empty(number_candidate_points)  # Initialize array to store corresponding y values
+            
+            # Generate candidate points and calculate their acquisition values
+            for j in range(number_candidate_points):
+                random_index = np.random.randint(0, resolution)  # Randomly select an index
+                candidate_X[j] = sample_points[random_index]  # Store the corresponding X value
+                candidate_y[j] = object.AcquisitionFunction(mean[random_index], np.sqrt(variance[random_index]), kappas[i])  # Calculate and store the acquisition value
+                                               
+            # Calculate the acquisition function for the entire sample space
+            sample_y = object.AcquisitionFunction(mean, np.sqrt(variance), kappas[i])
+
+            # Plot the acquisition function curve
+            plt.plot(sample_points, sample_y, label=f'Kappa={round(kappas[i],2)}', color=f'C{i}')
+
+            # Choose the x value which corresponds to the largest candidate y
+            max_index = np.argmax(candidate_y)
+
+            # Plot the point with the maximum acquisition value
+            plt.scatter(candidate_X[max_index], candidate_y[max_index], s=50, color=f'C{i}')
+            # Plot the other acquisition values
+            plt.scatter(candidate_X, candidate_y, s=10,  color=f'C{i}')
+
+        # Label the axes
+        plt.xlabel('X')
+        plt.ylabel('Acquisition Function Value')
+
+        # Display the legend outside the plot
+        plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+        
+        # Display the plot
+        plt.show()
+
+    else:
+        print('Function requires a one dimensional optimization problem.')
+
+
+# ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
+                                            
+# ==============----------------- -- -- -- - - Kernels - - -- -- -- -------------------================ #         
+
 
 def RBF_Kernel(X1, X2, length_scale):
     """
@@ -714,9 +791,9 @@ def MaternKernel(X1, X2, length_scale, nu=0.1):
 
 
 
-    # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
-                                                
-    # ==============----------------- -- -- Acquisition Functions - -- -------------------================ #    
+# ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
+                                            
+# ==============----------------- -- -- Acquisition Functions - -- -------------------================ #    
 
 def UCB(mean, standard_deviation, kappa):
     """
