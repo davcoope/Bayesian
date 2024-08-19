@@ -664,28 +664,28 @@ class BO:
                                                 
     # ==============----------------- -- -- - - - Plotting - - - -- -- -------------------================ #   
 
-    def SausagePlot(self, resolution=1000):
+def SausagePlot(object, resolution=1000):
 
-        if len(self.bounds) == 1:
+    if len(object.bounds) == 1:
 
-            sample_points = np.linspace(0, 1, resolution, endpoint=True)
+        sample_points = np.linspace(0, 1, resolution, endpoint=True)
 
-            mean, varience = self.PredictMeanVariance(sample_points.reshape(resolution,1))
+        mean, varience = object.PredictMeanVariance(sample_points.reshape(resolution,1))
 
-            plt.plot(sample_points, mean)
-            plt.fill_between(sample_points, mean - 1.96 * np.sqrt(varience), mean + 1.96 * np.sqrt(varience), color = 'blue', alpha=0.2, label = '95% confidence interval')
+        plt.plot(sample_points, mean)
+        plt.fill_between(sample_points, mean - 1.96 * np.sqrt(varience), mean + 1.96 * np.sqrt(varience), color = 'blue', alpha=0.2, label = '95% confidence interval')
 
-            shifted_y_data = self.y_data - np.min(self.y_data)
-            normalized_y_data = shifted_y_data / np.max(shifted_y_data)
+        shifted_y_data = object.y_data - np.min(object.y_data)
+        normalized_y_data = shifted_y_data / np.max(shifted_y_data)
 
-            plt.scatter(self.X_data, normalized_y_data, s=10)
+        plt.scatter(object.X_data, normalized_y_data, s=10)
 
-            # Display the plot
-            plt.show()
+        # Display the plot
+        plt.show()
 
-        else:
+    else:
 
-            print('Can only produce sausage plots of one dimensional functions.')
+        print('Can only produce sausage plots of one dimensional functions.')
 
 
     # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
