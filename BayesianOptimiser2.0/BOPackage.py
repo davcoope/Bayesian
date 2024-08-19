@@ -209,7 +209,7 @@ class BO:
 
     # ==============----------------- -- -- - Update object - -- -- -- -------------------================ #
 
-    def UpdateData(self, raw_X, raw_y):
+    def UpdateData(self, raw_X, raw_y, update_iteration=True):
         """
         Update the internal data storage with new X and Y values.
 
@@ -233,14 +233,18 @@ class BO:
         else:
             self.y_data = np.append(self.y_data, raw_y.flatten())
 
-        self.iteration_number += 1
+        # Update the iteration count
+        if update_iteration:
+            self.iteration_number += 1
 
-        if self.log_path is not None:
-            self.LogCurrentStatus()
-        
+        # Check for bounds reduction
         if self.dynamic_bounds==True:
             self.StuckInPeak()
             self.ReduceBounds()
+
+        # Log current status
+        if self.log_path is not None:
+            self.LogCurrentStatus()
 
 
     def UpdateDataCSV(self, csv_file):
@@ -514,7 +518,7 @@ class BO:
             # Calculate the new bounds for this dimension using the current best X value and the spread
             bounds = np.empty([len(bounds), 2])
             for i in range(len(self.bounds)):
-                bounds[i] = self.FindBounds(self.X_data[self.BestData()[0][0]][i],spread)
+                bounds[i] = self.FindBounds(self.X_data[self.BestData()[0][0]][i], spread)
             self.bounds = np.array(bounds)
 
 
@@ -650,3 +654,15 @@ def UCB(mean, standard_deviation, kappa):
     - float: The acquisition value, which is used to guide the selection of the next sample point.
     """
     return mean + kappa * standard_deviation
+
+
+    # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
+                                                
+    # ==============----------------- -- -- - - - Plotting - - - -- -- -------------------================ #   
+
+def SausagePlot(self):
+    # Check 1D optimisation
+
+    # plt.plot(sasuage_plot)
+    return
+
