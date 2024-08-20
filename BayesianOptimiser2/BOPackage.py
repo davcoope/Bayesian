@@ -48,6 +48,7 @@ class BO:
         self.n_samples = n_samples
 
         self.iteration_number = 0
+        self.simulations_per_iteration = np.empty([0, 1])
 
         self.mean = None
         self.variance = None
@@ -268,6 +269,7 @@ class BO:
         # Update the iteration count
         if update_iteration:
             self.iteration_number += 1
+            self.simulations_per_iteration = np.vstack([self.simulations_per_iteration, len(raw_y)])
 
         # Check for bounds reduction
         if self.dynamic_bounds==True:
