@@ -53,8 +53,8 @@ class BO:
         self.mean = None
         self.variance = None
 
-        self.X_data = np.array([])
-        self.y_data = np.array([])
+        self.X_data = np.empty([0, 1])
+        self.y_data = np.empty([0, 1])
 
         self.random_seed = random_seed
 
@@ -104,7 +104,6 @@ class BO:
 
         return raw_X
     
-
     def GetNextX(self, kappa=0.1, K_inv=None):
         """
         Get the next set of input parameters for the objective function.
@@ -279,7 +278,6 @@ class BO:
         # Log current status
         if self.log_path is not None:
             self.LogCurrentStatus()
-
 
     def UpdateDataCSV(self, csv_file, update_iteration=False):
         """
@@ -643,14 +641,15 @@ class BO:
 # ==============----------------- -- -- - - - Plotting - - - -- -- -------------------================ #   
 
 def SausagePlot(object, highlight_recent=0, resolution=1000):
-
+    plt.figure(figsize=(12, 6))
+    
     if len(object.bounds) == 1:
 
         sample_points = np.linspace(0, 1, resolution, endpoint=True).reshape(resolution,1)
 
         mean, variance = object.PredictMeanVariance(sample_points)
 
-        plt.plot(sample_points, mean)
+        plt.plot(sample_points, mean, label='mean')
         plt.fill_between(sample_points[:,0], mean[:,0] - 1.96 * np.sqrt(variance[:,0]), mean[:,0] + 1.96 * np.sqrt(variance[:,0]), color = 'blue', alpha=0.2, label = '95% confidence interval')
 
         shifted_y_data = object.y_data - np.min(object.y_data)
@@ -660,6 +659,10 @@ def SausagePlot(object, highlight_recent=0, resolution=1000):
         
         if highlight_recent != 0:
             plt.scatter(object.X_data[-highlight_recent:], normalized_y_data[-highlight_recent:], s=30, color='red')
+
+        plt.title("Mean/Varance Plot")
+
+        plt.legend()
 
         # Display the plot
         plt.show()
@@ -685,6 +688,8 @@ def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points,
     - min_kappa (float): The minimum kappa value.
     - resolution (int): The number of points used to sample the acquisition function. Default is 1000.
     """
+
+    plt.figure(figsize=(12, 6))
 
     # Function requires a one dimensional optimisation problem
     if len(object.bounds) == 1:
@@ -736,6 +741,8 @@ def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points,
         # Label the axes
         plt.xlabel('X')
         plt.ylabel('Acquisition Function Value')
+
+        plt.title("Acquisition Function")
 
         # Display the legend outside the plot
         plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
@@ -794,7 +801,9 @@ def UCB(mean, standard_deviation, kappa):
     Returns:
     - float: The acquisition value, which is used to guide the selection of the next sample point.
     """
-    return mean + kappa * standard_deviation
+    random_numbers = 0.01 * (np.random.rand(len(mean)).reshape(len(mean), 1))
+
+    return mean + kappa * (standard_deviation + random_numbers)
 
 
 
