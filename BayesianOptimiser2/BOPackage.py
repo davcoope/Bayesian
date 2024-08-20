@@ -200,9 +200,9 @@ class BO:
 
                 for i in range(int(np.ceil(batch_size / sub_batch_size))):
 
-                    sub_raw_X = np.empty((sub_batch_size,len(self.bounds)))
+                    sub_raw_X = np.empty((sub_batch_size, len(self.bounds)))
                     
-                    sub_raw_y = np.empty(sub_batch_size)
+                    sub_raw_y = np.empty([sub_batch_size, 1])
 
                     K_inv = self.InverseKernel()
 
@@ -221,13 +221,10 @@ class BO:
                         sub_raw_y[j] = normalised_y * np.max(self.y_data) + np.min(self.y_data)
 
                     # Concatenate raw_X to the existing X_data array
-                    self.X_data = np.concatenate((self.X_data, sub_raw_X), axis=0)
+                    self.X_data = np.vstack([self.X_data, sub_raw_X])
 
                     # Same for y
-                    self.y_data = np.append(self.y_data, sub_raw_y)
-
-                    print(self.y_data)
-                    print()
+                    self.y_data = np.vstack([self.y_data, sub_raw_y])
 
                 self.X_data = self.X_data[:-batch_size]
                 self.y_data = self.y_data[:-batch_size]
@@ -260,13 +257,13 @@ class BO:
         if self.X_data.size == 0:
             self.X_data = raw_X
         else:
-            self.X_data = np.concatenate((self.X_data, raw_X), axis=0)
+            self.X_data = np.vstack([self.X_data, raw_X])
 
         # Same for y
         if self.y_data.size == 0:
-            self.y_data = raw_y.flatten()
+            self.y_data = raw_y
         else:
-            self.y_data = np.append(self.y_data, raw_y.flatten())
+            self.y_data = np.vstack([self.y_data, raw_y])
 
         # Update the iteration count
         if update_iteration:
@@ -301,7 +298,7 @@ class BO:
         csv_data_length = len(df['Result'].values)
 
         # Initialize a zero array for the new X data with the correct shape
-        self.X_data = np.concatenate((self.X_data, np.zeros((csv_data_length, len(self.bounds)))), axis=0)
+        self.X_data = np.vstack( [self.X_data, np.zeros((csv_data_length, len(self.bounds)))] )
 
         # Loop over each row of the newly added data and each column (each dimension of X)
         for i in range(csv_data_length):
@@ -314,25 +311,9 @@ class BO:
             self.iteration_number += 1
 
 
-    def LoadOptimiser(self, object_file_path):
-        return 
-
-
     # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
 
     # ==============----------------- -- -- - - Saving Data - -- -- -- -------------------================ #
-
-
-    def SaveOptimisaer(self, object_file_path):
-        # Save the class instance to a file
-        with open(object_file_path, 'wb') as file:
-            pickle.dump(self, file)
-
-
-            ######## Example Load ########
-
-            # with open('file_path', 'rb') as file:
-            #     object_name = pickle.load(file)
     
 
     def WriteOutputToCSV(self, csv_path, raw_X, raw_y):
@@ -436,7 +417,7 @@ class BO:
         full_cov = K_star_star - K_star.T.dot(K_inv).dot(K_star)
 
         # Extract the diagonal elements to get the variances for each new point
-        var = np.diag(full_cov)
+        var = np.diag(full_cov).reshape(len(candidate_x), 1)
 
         return mean, var
     
@@ -659,16 +640,16 @@ class BO:
                                             
 # ==============----------------- -- -- - - - Plotting - - - -- -- -------------------================ #   
 
-def SausagePlot(object, highlight_recent = 0, resolution=1000):
+def SausagePlot(object, highlight_recent=0, resolution=1000):
 
     if len(object.bounds) == 1:
 
-        sample_points = np.linspace(0, 1, resolution, endpoint=True)
+        sample_points = np.linspace(0, 1, resolution, endpoint=True).reshape(resolution,1)
 
-        mean, variance = object.PredictMeanVariance(sample_points.reshape(resolution,1))
+        mean, variance = object.PredictMeanVariance(sample_points)
 
         plt.plot(sample_points, mean)
-        plt.fill_between(sample_points, mean - 1.96 * np.sqrt(variance), mean + 1.96 * np.sqrt(variance), color = 'blue', alpha=0.2, label = '95% confidence interval')
+        plt.fill_between(sample_points[:,0], mean[:,0] - 1.96 * np.sqrt(variance[:,0]), mean[:,0] + 1.96 * np.sqrt(variance[:,0]), color = 'blue', alpha=0.2, label = '95% confidence interval')
 
         shifted_y_data = object.y_data - np.min(object.y_data)
         normalized_y_data = shifted_y_data / np.max(shifted_y_data)
@@ -706,17 +687,17 @@ def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points,
     # Function requires a one dimensional optimisation problem
     if len(object.bounds) == 1:
 
-        kappas = np.empty(number_kappas)  # Initialize an empty array to store kappa values
+        kappas = np.empty([number_kappas, 1])  # Initialize an empty array to store kappa values
         
         # Calculate kappa values for the specified range
         for i in range(number_kappas):
             kappas[i] = object.CalculateKappa(number_kappas, i, max_kappa, min_kappa)
 
         # Generate evenly spaced sample points between the bounds
-        sample_points = np.concatenate([np.linspace(lower_bound, upper_bound, resolution, endpoint=True) for (lower_bound, upper_bound) in object.bounds])
+        sample_points = np.concatenate([np.linspace(lower_bound, upper_bound, resolution, endpoint=True) for (lower_bound, upper_bound) in object.bounds]).reshape(resolution,1)
         
         # Predict the mean and variance for the sample points
-        mean, variance = object.PredictMeanVariance(sample_points.reshape(resolution,1))
+        mean, variance = object.PredictMeanVariance(sample_points)
 
         # Normalize the Y data for plotting
         shifted_y_data = object.y_data - np.min(object.y_data)
@@ -727,8 +708,8 @@ def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points,
 
         # Iterate through each kappa value to calculate the acquisition function
         for i in range(number_kappas):
-            candidate_X = np.empty(number_candidate_points)  # Initialize array to store candidate X points
-            candidate_y = np.empty(number_candidate_points)  # Initialize array to store corresponding y values
+            candidate_X = np.empty([number_candidate_points, len(object.bounds)])  # Initialize array to store candidate X points
+            candidate_y = np.empty([number_candidate_points, 1])  # Initialize array to store corresponding y values
             
             # Generate candidate points and calculate their acquisition values
             for j in range(number_candidate_points):
@@ -740,7 +721,7 @@ def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points,
             sample_y = object.AcquisitionFunction(mean, np.sqrt(variance), kappas[i])
 
             # Plot the acquisition function curve
-            plt.plot(sample_points, sample_y, label=f'Kappa={round(kappas[i],2)}', color=f'C{i}')
+            plt.plot(sample_points, sample_y, label=f'Kappa={round(kappas[i][0],2)}', color=f'C{i}')
 
             # Choose the x value which corresponds to the largest candidate y
             max_index = np.argmax(candidate_y)
@@ -813,3 +794,22 @@ def UCB(mean, standard_deviation, kappa):
     """
     return mean + kappa * standard_deviation
 
+
+
+# ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
+                                            
+# ==============----------------- -- -- - Load/Save Object - -- -- -------------------================ #    
+
+
+
+def SaveOptimisaer(object, file_path):
+    with open(file_path, 'wb') as file:
+        pickle.dump(object, file)
+
+
+
+def LoadOptimiser(file_path):
+    with open(file_path, 'rb') as file:
+        object = pickle.load(file)
+
+    return object
