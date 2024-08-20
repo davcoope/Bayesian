@@ -48,7 +48,7 @@ class BO:
         self.n_samples = n_samples
 
         self.iteration_number = 0
-        self.simulations_per_iteration = np.empty([0, 1])
+        self.iterations_array = np.empty([0, 1])
 
         self.mean = None
         self.variance = None
@@ -69,6 +69,7 @@ class BO:
 
             self.bounds_reduction_counter = 0
             self.stuck_in_peak_counter = 0
+            self.current_best_value = 0
 
 
     # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
@@ -101,6 +102,9 @@ class BO:
             optimiser_end_time = time.time()  # Record end time for optimisation
             self.logger.info(f'The time taken to get all X values for the random iteration was {(optimiser_end_time-optimiser_start_time)/60} minutes.')
             self.logger.info('')
+
+        if self.dynamic_bounds==True:
+            self.batch_size = batch_size   
 
         return raw_X
     
@@ -216,9 +220,9 @@ class BO:
 
                         raw_X[j + sub_batch_size * i] = sub_raw_X[j]
 
-                        normalised_y = self.mean[self.max_index]
+                        normalized_y = self.mean[self.max_index]
 
-                        sub_raw_y[j] = normalised_y * np.max(self.y_data) + np.min(self.y_data)
+                        sub_raw_y[j] = normalized_y * np.max(self.y_data) + np.min(self.y_data)
 
                     # Concatenate raw_X to the existing X_data array
                     self.X_data = np.vstack([self.X_data, sub_raw_X])
@@ -234,6 +238,9 @@ class BO:
             optimiser_end_time = time.time()  # Record end time for optimisation
             self.logger.info(f'The time taken to get all X values for this iteration was {(optimiser_end_time-optimiser_start_time)/60} minutes.')
             self.logger.info('')
+
+        if self.dynamic_bounds==True:
+            self.batch_size = batch_size        
 
         return raw_X
 
@@ -268,12 +275,12 @@ class BO:
         # Update the iteration count
         if update_iteration:
             self.iteration_number += 1
-            self.simulations_per_iteration = np.vstack([self.simulations_per_iteration, len(raw_y)])
+            self.iterations_array = np.vstack([self.iterations_array, np.full((len(raw_y), 1), self.iteration_number)])
 
         # Check for bounds reduction
         if self.dynamic_bounds==True:
             self.StuckInPeak()
-            self.ReduceBounds()
+            self.UpdateBounds()
 
         # Log current status
         if self.log_path is not None:
@@ -292,23 +299,30 @@ class BO:
         # Read the CSV file into a pandas DataFrame
         df = pd.read_csv(csv_file)
 
+        raw_y = np.array(df['Result'].values).reshape(len(df['Result'].values),1)
+
         # Extract the Y data from the DataFrame
-        self.y_data = np.append(self.y_data, df['Result'].values)
+        self.y_data = np.vstack([self.y_data, raw_y])
 
         csv_data_length = len(df['Result'].values)
 
         # Initialize a zero array for the new X data with the correct shape
         self.X_data = np.vstack( [self.X_data, np.zeros((csv_data_length, len(self.bounds)))] )
 
+        raw_X = np.zeros((csv_data_length, len(self.bounds)))
+
         # Loop over each row of the newly added data and each column (each dimension of X)
         for i in range(csv_data_length):
             for k in range(len(self.bounds)):
                 # Fill in the X data with the values from the DataFrame
                 self.X_data[len(self.y_data) - csv_data_length +i][k] = df[f'X{k}'][i]
+                raw_X[i,k] = df[f'X{k}'][i]
 
         # Update the iteration count
         if update_iteration:
             self.iteration_number += 1
+
+        return raw_X, raw_y
 
 
     # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
@@ -489,40 +503,32 @@ class BO:
             if self.log_path is not None:
                 self.logger.info('The Optimiser has become stuck at a peak')  # Log the event
     
-    def FindBounds(self, number, range):
-        """
-        Find the upper and lower bounds for the domain for a given number within a specified range.
-
-        This method calculates the bounds for a given number, ensuring that the bounds 
-        remain within the interval [0, 1]. This is particularly useful when dealing with 
-        normalized data or probabilities.
-
-        Parameters:
-        - number (float): The central value for which to find bounds.
-        - range (float): The range around the central value.
-
-        Returns:
-        - list: A list containing the lower and upper bounds.
-        """
-        # Calculate the upper bound by adding half of the range to the number
-        upper_bound = number + range/2
-
-        # Calculate the lower bound by subtracting half of the range from the number
-        lower_bound = number - range/2
-
-        # Check if the lower bound is less than 0
-        if lower_bound < 0:
-            lower_bound = 0   # If the lower bound is less than 0, set it to 0
-            upper_bound = range  # Adjust the upper bound to be the full range from 0
-
-        # Check if the upper bound exceeds 1    
-        elif upper_bound > 1:
-            lower_bound = 1-range  # Adjust the lower bound to be 1 minus the range
-            upper_bound = 1   # If the upper bound exceeds 1, set it to 1
-
-        return [lower_bound,upper_bound]
-    
     def ReduceBounds(self):
+        
+        best_point = self.X_data[self.BestData()[0][0]]
+
+        new_bounds = np.empty_like(self.bounds, dtype=float)
+        new_range = np.empty_like(best_point, dtype=float)
+
+        for i in range(len(self.bounds)):
+
+            new_range[i] = (self.bounds[i,1] - self.bounds[i,0]) * self.reduce_bounds_factor
+
+            new_bounds[i,1] = best_point[i] + new_range[i]/2
+
+            new_bounds[i,0] = best_point[i] - new_range[i]/2
+
+            if new_bounds[i,0] < self.bounds[i,0]:
+                new_bounds[i,0] = self.bounds[i,0]   
+                new_bounds[i,1] = new_range[i]  
+
+            elif new_bounds[i,1] > self.bounds[i,1]:
+                new_bounds[i,0] = self.bounds[i,1]-new_range[i] 
+                new_bounds[i,1] = self.bounds[i,1] 
+
+        self.bounds = new_bounds
+    
+    def UpdateBounds(self):
         """
         Reduce the search bounds if stuck in a peak.
 
@@ -541,15 +547,8 @@ class BO:
         if self.stuck_in_peak_counter >= self.iterations_between_reducing_bounds and self.iteration_number >= self.first_reduce_bounds:
             self.stuck_in_peak_counter = 0  # Reset the stuck_in_peak_counter
             self.bounds_reduction_counter += 1  # Increment the bounds_reduction_counter
-            spread = self.reduce_bounds_factor ** self.bounds_reduction_counter  # Set the correct range of the bounds
             self.length_scale = self.length_scale * self.reduce_bounds_factor  # Reduce the length scale proportionally to the bounds
-            
-            # Calculate the new bounds for this dimension using the current best X value and the spread
-            bounds = np.empty([len(bounds), 2])
-            for i in range(len(self.bounds)):
-                bounds[i] = self.FindBounds(self.X_data[self.BestData()[0][0]][i], spread)
-            self.bounds = np.array(bounds)
-
+            self.ReduceBounds()
 
             if self.log_path is not None:
                 self.logger.info(f'New bounds are {self.bounds}')
@@ -752,6 +751,20 @@ def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points,
 
     else:
         print('Function requires a one dimensional optimization problem.')
+
+def PlotData(object):
+
+    iteration_numbers = np.unique(object.iterations_array)
+
+    next_batch_simulation_number = 0
+
+    for i in iteration_numbers:
+        indices = np.where(object.iterations_array == i)[0]
+        simulation_numbers = np.arange(next_batch_simulation_number, next_batch_simulation_number + len(indices))
+        plt.scatter(simulation_numbers,object.y_data[indices])
+        next_batch_simulation_number = np.max(simulation_numbers) + 1
+
+    return
 
 
 # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
