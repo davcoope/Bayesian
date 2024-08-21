@@ -147,7 +147,7 @@ class BO:
         return next_X
     
 
-    def GetNextXBatch(self, batch_size, kappa = 0.1, max_kappa = None, min_kappa = None, sub_batch_size=None):
+    def GetNextXBatch(self, batch_size, sub_batch_size=None, kappa = 0.1, max_kappa = None, min_kappa = None):
         """
         Get the next batch of input parameters for the objective function.
 
@@ -657,7 +657,7 @@ def SausagePlot(object, highlight_recent=0, resolution=1000):
         plt.scatter(object.X_data, normalized_y_data, s=10)
         
         if highlight_recent != 0:
-            plt.scatter(object.X_data[-highlight_recent:], normalized_y_data[-highlight_recent:], s=30, color='red')
+            plt.scatter(object.X_data[-highlight_recent:], normalized_y_data[-highlight_recent:], s=30, color='red', label=f'most recent {highlight_recent} points')
 
         plt.title("Mean/Varance Plot")
 
