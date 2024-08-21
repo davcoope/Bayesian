@@ -10,6 +10,9 @@ import logging
 import matplotlib.pyplot as plt
 import pickle
 
+from scipy.special import kv, gamma
+from scipy.stats import norm
+
 class BO:
     def __init__(self, KernelFunction, length_scale, AcquisitionFunction, bounds, n_samples, log_path=None, dynamic_bounds=False, iterations_between_reducing_bounds=None, first_reduce_bounds=None, reduce_bounds_factor=None, random_seed=52):
         """
@@ -138,7 +141,7 @@ class BO:
             self.mean, self.variance = self.PredictMeanVariance(candidate_x, K_inv=K_inv)
 
             # Draw samples from the posterior using the acquisition function
-            candidate_y = self.AcquisitionFunction(self.mean, np.sqrt(self.variance), kappa)
+            candidate_y = self.AcquisitionFunction(self.mean, np.sqrt(self.variance), self.BestData()[1][0], kappa)
 
             # Choose the x value which corresponds to the largest candidate y
             self.max_index = np.argmax(candidate_y)
@@ -733,7 +736,7 @@ def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points,
             for j in range(number_candidate_points):
                 random_index = np.random.randint(0, resolution)  # Randomly select an index
                 candidate_X[j] = sample_points[random_index]  # Store the corresponding X value
-                candidate_y[j] = object.AcquisitionFunction(mean[random_index], np.sqrt(variance[random_index]), kappas[i])  # Calculate and store the acquisition value
+                candidate_y[j] = object.AcquisitionFunction(mean[random_index], np.sqrt(variance[random_index]), object.BestData()[1][0], kappas[i])  # Calculate and store the acquisition value
                                                
             # Calculate the acquisition function for the entire sample space
             sample_y = object.AcquisitionFunction(mean, np.sqrt(variance), kappas[i])
@@ -801,16 +804,46 @@ def RBF_Kernel(X1, X2, length_scale):
     return np.exp(-0.5 / length_scale**2 * sqdist)
 
 
-def MaternKernel(X1, X2, length_scale, nu=0.1):
-    return 0
+def MaternKernel(X1, X2, length_scale, nu=1.0):
+    """
+    Matern kernel function.
+
+    Parameters:
+    X1, X2 (np.ndarray or float): Input points, can be scalars or numpy arrays.
+    length_scale (float): The length scale parameter.
+    nu (float, optional): Controls the smoothness of the function. Common values are 0.5, 1.5, and 2.5.
+
+    Returns:
+    np.ndarray: Kernel values between X1 and X2.
+    """   
+    # Ensure inputs are numpy arrays
+    X1 = np.atleast_1d(X1)
+    X2 = np.atleast_1d(X2)
+    
+    # Compute the pairwise Euclidean distances between X1 and X2
+    pairwise_dists = np.sqrt(np.sum((X1[:, np.newaxis, :] - X2[np.newaxis, :, :]) ** 2, axis=-1))
+
+    # Compute the scaled distances based on the length scale and nu parameter
+    scaled_dists = np.sqrt(2 * nu) * pairwise_dists / length_scale
+
+    # Compute the Matern kernel values
+    if nu == 0.5:
+        # Special case for nu = 0.5, equivalent to the exponential kernel
+        kernel_values = np.exp(-scaled_dists)
+    else:
+        # General case for other values of nu
+        kernel_values = (2**(1.0 - nu) / gamma(nu)) * (scaled_dists**nu) * kv(nu, scaled_dists)
+        kernel_values[np.isnan(kernel_values)] = 1.0  # Handle division by zero by setting NaNs to 1.0
+
+    return kernel_values
 
 
 
-# ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
+# ==========p====----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
                                             
 # ==============----------------- -- -- Acquisition Functions - -- -------------------================ #    
 
-def UCB(mean, standard_deviation, kappa):
+def UpperConfidenceBound(mean, standard_deviation, best_observed, kappa):
     """
     Compute the acquisition value for a given set of parameters.
 
@@ -821,6 +854,7 @@ def UCB(mean, standard_deviation, kappa):
     Parameters:
     - mean (float): The predicted mean value of the objective function.
     - standard_deviation (float): The standard deviation (uncertainty) of the prediction.
+    - best_observed (float): A dummy parameter included for consistency across acquisition functions. It is not used in the UCB calculation.
     - kappa (float): A parameter that controls the trade-off between exploration and exploitation.
 
     Returns:
@@ -828,9 +862,159 @@ def UCB(mean, standard_deviation, kappa):
     """
     random_numbers = 0.01 * (np.random.rand(len(mean)).reshape(len(mean), 1))
 
-    return mean + kappa * (standard_deviation + random_numbers)
+    ucb = mean + kappa * (standard_deviation + random_numbers)
 
+    return ucb
 
+def ExpectedImprovement(mean, standard_deviation, best_observed, xi=0.01):
+    """
+    Compute the Expected Improvement (EI) acquisition function value for a given set of parameters.
+
+    This function calculates the expected improvement by comparing the predicted mean and uncertainty (standard deviation)
+    against the current best observed value of the objective function.
+
+    Parameters:
+    - mean (np.ndarray): The predicted mean values of the objective function (shape: (N, 1)).
+    - standard_deviation (np.ndarray): The predicted standard deviation (uncertainty) of the prediction (shape: (N, 1)).
+    - best_observed (float): The current best observed value of the objective function.
+    - xi (float, optional): Exploration parameter, a small positive value to encourage exploration (default is 0.01).
+
+    Returns:
+    - np.ndarray: The expected improvement values for each point in the input (shape: (N, 1)).
+    """
+    # Calculate the improvement (mu - best_observed - xi)
+    improvement = mean - best_observed - xi
+    
+    # Calculate the Z value
+    Z = improvement / (standard_deviation + 1e-9)  # Adding epsilon to avoid division by zero
+    
+    # Calculate the Expected Improvement
+    ei = improvement * norm.cdf(Z) + standard_deviation * norm.pdf(Z)
+    
+    # Ensure non-negative EI values
+    ei = np.max(ei, 0)
+
+    return ei
+
+def ProbabilityImprovement(mean, standard_deviation, best_observed, xi=0.01):
+    """
+    Compute the Probability of Improvement (PI) acquisition function value for a given set of parameters.
+
+    This function calculates the probability that the objective function will improve upon the current best observed value.
+
+    Parameters:
+    - mean (np.ndarray): The predicted mean values of the objective function (shape: (N, 1)).
+    - standard_deviation (np.ndarray): The predicted standard deviation (uncertainty) of the prediction (shape: (N, 1)).
+    - best_observed (float): The current best observed value of the objective function.
+    - xi (float, optional): Exploration parameter, a small positive value to encourage exploration (default is 0.01).
+
+    Returns:
+    - np.ndarray: The probability of improvement values for each point in the input (shape: (N, 1)).
+    """
+    
+    # Calculate the improvement (mu - best_observed - xi)
+    improvement = mean - best_observed - xi
+    
+    # Calculate the Z value
+    Z = improvement / (standard_deviation + 1e-9)  # Adding epsilon to avoid division by zero
+    
+    # Calculate the Probability of Improvement
+    pi = norm.cdf(Z)
+
+    return pi
+
+def KnowledgeGradient(mean, standard_deviation, best_observed, xi=0.01):
+    """
+    Compute the Knowledge Gradient (KG) acquisition function value for a given set of parameters.
+
+    This function calculates the expected increase in the value of the best solution found so far by sampling a new point.
+
+    Parameters:
+    - mean (np.ndarray): The predicted mean values of the objective function (shape: (N, 1)).
+    - standard_deviation (np.ndarray): The predicted standard deviation (uncertainty) of the prediction (shape: (N, 1)).
+    - best_observed (float): The current best observed value of the objective function.
+    - xi (float, optional): Exploration parameter, a small positive value to encourage exploration (default is 0.01).
+
+    Returns:
+    - np.ndarray: The knowledge gradient values for each point in the input (shape: (N, 1)).
+    """
+
+    # Calculate the improvement (mu - best_observed - xi)
+    improvement = mean - best_observed - xi
+
+    # Calculate the Z value
+    Z = improvement / (standard_deviation + 1e-9)  # Adding epsilon to avoid division by zero
+
+    # Calculate the Expected Improvement for the next step
+    ei = improvement * norm.cdf(Z) + standard_deviation * norm.pdf(Z)
+
+    # Knowledge Gradient: The KG is the EI divided by the current standard deviation (normalized EI)
+    kg = ei / (standard_deviation + 1e-9)
+
+    return kg
+
+def MaxValueEntropySearch(mean, standard_deviation, best_observed, num_samples=1000):
+    """
+    Compute the Max-Value Entropy Search (MES) acquisition function value for a given set of parameters.
+
+    This function calculates the expected reduction in entropy of the maximum value of the objective function.
+
+    Parameters:
+    - mean (np.ndarray): The predicted mean values of the objective function (shape: (N, 1)).
+    - standard_deviation (np.ndarray): The predicted standard deviation (uncertainty) of the prediction (shape: (N, 1)).
+    - best_observed (float): A dummy parameter included for consistency across acquisition functions. It is not used in the UCB calculation.
+    - num_samples (int, optional): Number of samples to approximate the distribution of the maximum value (default is 1000).
+
+    Returns:
+    - np.ndarray: The MES values for each point in the input (shape: (N, 1)).
+    """
+    # Ensure num_samples is an integer
+    num_samples = int(num_samples)
+    
+    # Sample from the Gaussian (Normal) distribution using the predicted mean and standard deviation
+    samples = np.random.normal(mean, standard_deviation, size=(len(mean), num_samples))
+    
+    # Estimate the maximum value from the samples
+    sample_maxes = np.max(samples, axis=0)
+    
+    # Calculate the entropy of the maximum value distribution
+    log_probs = norm.logpdf(sample_maxes, loc=mean, scale=standard_deviation)
+    expected_entropy = -np.mean(log_probs, axis=1)
+    
+    # Calculate the expected entropy reduction
+    mes_values = expected_entropy - np.mean(norm.logpdf(samples, loc=mean, scale=standard_deviation), axis=1)
+    
+    return mes_values
+
+def BayesianExpectedLoss(mean, standard_deviation, best_observed, xi=0.01):
+    """
+    Compute the Bayesian Expected Loss (BEL) acquisition function value for a given set of parameters.
+
+    This function calculates the expected loss associated with selecting a point that is not the true optimum.
+
+    Parameters:
+    - mean (np.ndarray): The predicted mean values of the objective function (shape: (N, 1)).
+    - standard_deviation (np.ndarray): The predicted standard deviation (uncertainty) of the prediction (shape: (N, 1)).
+    - best_observed (float): The current best observed value of the objective function.
+    - xi (float, optional): Exploration parameter, a small positive value to encourage exploration (default is 0.01).
+
+    Returns:
+    - np.ndarray: The BEL values for each point in the input (shape: (N, 1)).
+    """
+    
+    # Calculate the improvement (mu - best_observed - xi)
+    improvement = mean - best_observed - xi
+    
+    # Calculate the Z value
+    Z = improvement / (standard_deviation + 1e-9)  # Adding epsilon to avoid division by zero
+    
+    # Calculate the loss: expected loss is proportional to the distance from the best observed
+    loss = norm.pdf(Z) * standard_deviation + (Z * norm.cdf(Z)) * standard_deviation
+    
+    # Calculate the Bayesian Expected Loss
+    bel = loss
+    
+    return bel
 
 # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
                                             
