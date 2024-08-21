@@ -222,7 +222,10 @@ class BO:
 
                         normalized_y = self.mean[self.max_index]
 
-                        sub_raw_y[j] = normalized_y * np.max(self.y_data) + np.min(self.y_data)
+                        if np.max(self.y_data - np.min(self.y_data)) == 0.0:
+                            sub_raw_y[j] = normalized_y
+                        else:
+                            sub_raw_y[j] = normalized_y * np.max(self.y_data) + np.min(self.y_data)
 
                     # Concatenate raw_X to the existing X_data array
                     self.X_data = np.vstack([self.X_data, sub_raw_X])
@@ -422,7 +425,10 @@ class BO:
 
         # Shift and Normalize the observed data
         shifted_y_data = self.y_data - np.min(self.y_data)
-        normalized_y_data = shifted_y_data / np.max(shifted_y_data)
+        if np.max(shifted_y_data) == 0.0:
+            normalized_y_data = self.y_data
+        else:
+            normalized_y_data = shifted_y_data / np.max(shifted_y_data)
 
         # Predict the mean of the new point
         mean = K_star.T.dot(K_inv).dot(normalized_y_data)  
@@ -652,7 +658,10 @@ def SausagePlot(object, highlight_recent=0, resolution=1000):
         plt.fill_between(sample_points[:,0], mean[:,0] - 1.96 * np.sqrt(variance[:,0]), mean[:,0] + 1.96 * np.sqrt(variance[:,0]), color = 'blue', alpha=0.2, label = '95% confidence interval')
 
         shifted_y_data = object.y_data - np.min(object.y_data)
-        normalized_y_data = shifted_y_data / np.max(shifted_y_data)
+        if np.max(shifted_y_data) == 0.0:
+            normalized_y_data = object.y_data
+        else:
+            normalized_y_data = shifted_y_data / np.max(shifted_y_data)
 
         plt.scatter(object.X_data, normalized_y_data, s=10)
         
@@ -707,7 +716,10 @@ def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points,
 
         # Normalize the Y data for plotting
         shifted_y_data = object.y_data - np.min(object.y_data)
-        normalized_y_data = shifted_y_data / np.max(shifted_y_data)
+        if np.max(shifted_y_data) == 0.0:
+            normalized_y_data = object.y_data
+        else:
+            normalized_y_data = shifted_y_data / np.max(shifted_y_data)
 
         # Plot the normalized data points on the graph
         plt.scatter(object.X_data, normalized_y_data, s=10)
