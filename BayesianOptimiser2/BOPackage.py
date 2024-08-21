@@ -168,18 +168,9 @@ class BO:
         if self.X_data.size == 0:
             
             if self.log_path is not None:
-                optimiser_start_time = time.time()  # Record start time for optimisation
                 self.logger.info('Since there is no data stored in the object, this batch is random.')
-                self.logger.info('Getting X values for this iteration')
-                self.logger.info('')
 
             raw_X = self.GetRandomXBatch(batch_size)
-
-            if self.log_path is not None:
-                optimiser_end_time = time.time()  # Record end time for optimisation
-                self.logger.info(f'The time taken to get all X values for this iteration was {(optimiser_end_time-optimiser_start_time)/60} minutes.')
-                self.logger.info('')
-
 
         else:
 
@@ -240,10 +231,10 @@ class BO:
                 self.y_data = self.y_data[:-batch_size]
 
 
-        if self.log_path is not None:
-            optimiser_end_time = time.time()  # Record end time for optimisation
-            self.logger.info(f'The time taken to get all X values for this iteration was {(optimiser_end_time-optimiser_start_time)/60} minutes.')
-            self.logger.info('')
+            if self.log_path is not None:
+                optimiser_end_time = time.time()  # Record end time for optimisation
+                self.logger.info(f'The time taken to get all X values for this iteration was {(optimiser_end_time-optimiser_start_time)/60} minutes.')
+                self.logger.info('')
 
         if self.dynamic_bounds==True:
             self.batch_size = batch_size        
@@ -280,8 +271,12 @@ class BO:
 
         # Update the iteration count
         if update_iteration:
-            self.iteration_number += 1
+            if self.log_path is not None:
+                self.logger.info(f'Data has been updated for iteration number {self.iteration_number}')
+                self.logger.info('')
+
             self.iterations_array = np.vstack([self.iterations_array, np.full((len(raw_y), 1), self.iteration_number)])
+            self.iteration_number += 1
 
         # Check for bounds reduction
         if self.dynamic_bounds==True:
@@ -326,6 +321,10 @@ class BO:
 
         # Update the iteration count
         if update_iteration:
+            if self.log_path is not None:
+                self.logger.info(f'Data has been updated from the csv {csv_file} for iteration number {self.iteration_number}')
+                self.logger.info('')
+
             self.iteration_number += 1
 
         return raw_X, raw_y
@@ -629,6 +628,7 @@ class BO:
         self.logger.addHandler(log_handler)
 
         self.logger.info('The log has been created')
+        self.logger.info('')
 
 
     def LogCurrentStatus(self):
@@ -769,6 +769,8 @@ def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points,
 
 def PlotData(object):
 
+    plt.figure(figsize=(12, 6))
+
     iteration_numbers = np.unique(object.iterations_array)
 
     next_batch_simulation_number = 0
@@ -776,8 +778,18 @@ def PlotData(object):
     for i in iteration_numbers:
         indices = np.where(object.iterations_array == i)[0]
         simulation_numbers = np.arange(next_batch_simulation_number, next_batch_simulation_number + len(indices))
-        plt.scatter(simulation_numbers,object.y_data[indices])
+        plt.scatter(simulation_numbers, object.y_data[indices], s=20, label=f'Iteration {int(i)}')
         next_batch_simulation_number = np.max(simulation_numbers) + 1
+
+    plt.title('Objective function value against simulation number')
+    plt.xlabel('Simulation number')
+    plt.ylabel('Objective function value')
+
+    plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+
+    # Display the plot
+    plt.show()
+
 
     return
 
