@@ -14,7 +14,7 @@ from scipy.special import kv, gamma
 from scipy.stats import norm
 
 class BO:
-    def __init__(self, KernelFunction, length_scale, AcquisitionFunction, bounds, n_samples, log_path=None, dynamic_bounds=False, iterations_between_reducing_bounds=None, first_reduce_bounds=None, reduce_bounds_factor=None, random_seed=52):
+    def __init__(self, KernelFunction, length_scale, AcquisitionFunction, bounds, n_samples, log_path=None, dynamic_bounds=False, iterations_between_reducing_bounds=None, first_reduce_bounds=None, reduce_bounds_factor=None, random_seed=42):
         """
         Initialize the Bayesian optimisation (BO) class with various parameters.
  
@@ -643,6 +643,11 @@ class BO:
             self.logger.info(f'The bounds have been reduced {self.bounds_reduction_counter} times')
         self.logger.info('')
         self.logger.info('')
+
+    def PrintCurrentStatus(self):
+        print(f'Current best y value was {self.BestData()[1][0]}; the corresponding X values were {self.X_data[self.BestData()[0][0]]}')
+        if self.dynamic_bounds is True:
+            print(f'The bounds have been reduced {self.bounds_reduction_counter} times')
 
 # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
                                             
