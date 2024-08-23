@@ -120,18 +120,10 @@ hyades = HyadesPackage.Hyades(
 # Create the output directory for all simulation results
 hyades.CreateOuterOutputDirectory()
 
+
 for i in range(Variables.random_iterations):
     raw_X = bo.GetRandomXBatch(Variables.random_batch_size)
-    # Check the number of bounds to determine the type of laser profile
-    if len(Variables.bounds) == 5:
-        # If bounds length is 5, run the 3-pulse laser profile simulation
-        raw_y = hyades.RunHyades3Pulse(raw_X, i, verbose=True)
-    elif len(Variables.bounds) == 7:
-        # If bounds length is 7, run the 4-pulse laser profile simulation
-        raw_y = hyades.RunHyades4Pulse(raw_X, i, verbose=True)
-    else:
-        # Handle incorrect bounds length
-        print("Incorrect bounds for a 3-pulse or 4-pulse laser profile.")
+    raw_y = hyades.RunHyades4Pulse(raw_X, i, verbose=True)
 
     # Write the simulation results to a CSV file
     bo.WriteOutputToCSV(Variables.csv_path, raw_X, raw_y)
@@ -142,16 +134,7 @@ for i in range(Variables.random_iterations):
 
 for i in range(Variables.iterations):
     raw_X = bo.GetNextXBatch(Variables.batch_size, sub_batch_size=Variables.sub_batch_size, max_kappa=Variables.max_kappa, min_kappa=Variables.min_kappa)
-    # Check the number of bounds to determine the type of laser profile
-    if len(Variables.bounds) == 5:
-        # If bounds length is 5, run the 3-pulse laser profile simulation
-        raw_y = hyades.RunHyades3Pulse(raw_X, i+Variables.random_iterations, verbose=True)
-    elif len(Variables.bounds) == 7:
-        # If bounds length is 7, run the 4-pulse laser profile simulation
-        raw_y = hyades.RunHyades4Pulse(raw_X, i+Variables.random_iterations, verbose=True)
-    else:
-        # Handle incorrect bounds length
-        print("Incorrect bounds for a 3-pulse or 4-pulse laser profile.")
+    raw_y = hyades.RunHyades4Pulse(raw_X, i+Variables.random_iterations, verbose=True)
 
     # Write the simulation results to a CSV file
     bo.WriteOutputToCSV(Variables.csv_path, raw_X, raw_y)
@@ -159,3 +142,55 @@ for i in range(Variables.iterations):
     bo.UpdateData(raw_X, raw_y)
 
     bo.LogCurrentStatus()
+
+
+
+
+
+
+
+
+
+
+
+
+
+# for i in range(Variables.random_iterations):
+#     raw_X = bo.GetRandomXBatch(Variables.random_batch_size)
+#     # Check the number of bounds to determine the type of laser profile
+#     if len(Variables.bounds) == 5:
+#         # If bounds length is 5, run the 3-pulse laser profile simulation
+#         raw_y = hyades.RunHyades3Pulse(raw_X, i, verbose=True)
+#     elif len(Variables.bounds) == 7:
+#         # If bounds length is 7, run the 4-pulse laser profile simulation
+#         raw_y = hyades.RunHyades4Pulse(raw_X, i, verbose=True)
+#     else:
+#         # Handle incorrect bounds length
+#         print("Incorrect bounds for a 3-pulse or 4-pulse laser profile.")
+
+#     # Write the simulation results to a CSV file
+#     bo.WriteOutputToCSV(Variables.csv_path, raw_X, raw_y)
+#     # Update the internal data storage with the new X and Y values
+#     bo.UpdateData(raw_X, raw_y)
+
+#     bo.LogCurrentStatus()
+
+# for i in range(Variables.iterations):
+#     raw_X = bo.GetNextXBatch(Variables.batch_size, sub_batch_size=Variables.sub_batch_size, max_kappa=Variables.max_kappa, min_kappa=Variables.min_kappa)
+#     # Check the number of bounds to determine the type of laser profile
+#     if len(Variables.bounds) == 5:
+#         # If bounds length is 5, run the 3-pulse laser profile simulation
+#         raw_y = hyades.RunHyades3Pulse(raw_X, i+Variables.random_iterations, verbose=True)
+#     elif len(Variables.bounds) == 7:
+#         # If bounds length is 7, run the 4-pulse laser profile simulation
+#         raw_y = hyades.RunHyades4Pulse(raw_X, i+Variables.random_iterations, verbose=True)
+#     else:
+#         # Handle incorrect bounds length
+#         print("Incorrect bounds for a 3-pulse or 4-pulse laser profile.")
+
+#     # Write the simulation results to a CSV file
+#     bo.WriteOutputToCSV(Variables.csv_path, raw_X, raw_y)
+#     # Update the internal data storage with the new X and Y values
+#     bo.UpdateData(raw_X, raw_y)
+
+#     bo.LogCurrentStatus()

@@ -60,6 +60,8 @@ class BO:
         self.y_data = np.empty([0, 1])
 
         self.random_seed = random_seed
+        # Set the random seed for reproducibility
+        np.random.seed(self.random_seed)
 
         if self.log_path is not None:
             self.CreateLogger()
@@ -89,14 +91,10 @@ class BO:
         Returns:
         - raw_X (2D array): Randomly generated X values for the batch.
         """
-
         if self.log_path is not None:
             optimiser_start_time = time.time()  # Record start time for optimisation
             self.logger.info(f'Getting batch of random X values.')
             self.logger.info('')
-
-        # Set the random seed for reproducibility
-        np.random.seed(self.random_seed)
 
         raw_X = np.array([np.array([np.random.uniform(lower_bound, upper_bound) for (lower_bound, upper_bound) in self.bounds]) for i in range(batch_size)])
 
@@ -528,7 +526,7 @@ class BO:
 
             if new_bounds[i,0] < self.bounds[i,0]:
                 new_bounds[i,0] = self.bounds[i,0]   
-                new_bounds[i,1] = new_range[i]  
+                new_bounds[i,1] = self.bounds[i,0] + new_range[i]  
 
             elif new_bounds[i,1] > self.bounds[i,1]:
                 new_bounds[i,0] = self.bounds[i,1]-new_range[i] 
