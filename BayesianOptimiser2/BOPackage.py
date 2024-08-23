@@ -72,7 +72,7 @@ class BO:
 
             self.bounds_reduction_counter = 0
             self.stuck_in_peak_counter = 0
-            self.current_best_value = 0
+            self.current_best_value = -np.inf
 
 
     # ==============----------------- -- -- -- - - - - - - -- -- -- -- -------------------================ #
