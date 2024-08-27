@@ -139,7 +139,7 @@ class BO:
             self.mean, self.variance = self.PredictMeanVariance(candidate_x, K_inv=K_inv)
 
             # Draw samples from the posterior using the acquisition function
-            candidate_y = self.AcquisitionFunction(self.mean, np.sqrt(self.variance), self.BestData()[1][0], kappa)
+            candidate_y = self.AcquisitionFunction(self.mean, np.sqrt(self.variance), kappa)
 
             # Choose the x value which corresponds to the largest candidate y
             self.max_index = np.argmax(candidate_y)
@@ -217,7 +217,8 @@ class BO:
                         if np.max(self.y_data - np.min(self.y_data)) == 0.0:
                             sub_raw_y[j] = normalized_y
                         else:
-                            sub_raw_y[j] = normalized_y * np.max(self.y_data) + np.min(self.y_data)
+                            shifted_y_data = self.y_data - np.min(self.y_data)
+                            sub_raw_y[j] = normalized_y * np.max(shifted_y_data) + np.min(self.y_data)
 
                     # Concatenate raw_X to the existing X_data array
                     self.X_data = np.vstack([self.X_data, sub_raw_X])
@@ -739,7 +740,7 @@ def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points,
             for j in range(number_candidate_points):
                 random_index = np.random.randint(0, resolution)  # Randomly select an index
                 candidate_X[j] = sample_points[random_index]  # Store the corresponding X value
-                candidate_y[j] = object.AcquisitionFunction(mean[random_index], np.sqrt(variance[random_index]), object.BestData()[1][0], kappas[i])  # Calculate and store the acquisition value
+                candidate_y[j] = object.AcquisitionFunction(mean[random_index], np.sqrt(variance[random_index]), kappas[i])  # Calculate and store the acquisition value
                                                
             # Calculate the acquisition function for the entire sample space
             sample_y = object.AcquisitionFunction(mean, np.sqrt(variance), kappas[i])
@@ -858,7 +859,7 @@ def MaternKernel(X1, X2, length_scale, nu=1.0):
                                             
 # ==============----------------- -- -- Acquisition Functions - -- -------------------================ #    
 
-def UpperConfidenceBound(mean, standard_deviation, best_observed, kappa):
+def UpperConfidenceBound(mean, standard_deviation, kappa):
     """
     Compute the acquisition value for a given set of parameters.
 
@@ -881,7 +882,7 @@ def UpperConfidenceBound(mean, standard_deviation, best_observed, kappa):
 
     return ucb
 
-def ExpectedImprovement(mean, standard_deviation, best_observed, xi=0.01):
+def ExpectedImprovement(mean, standard_deviation, best_observed=1.0, xi=0.01):
     """
     Compute the Expected Improvement (EI) acquisition function value for a given set of parameters.
 
@@ -911,7 +912,7 @@ def ExpectedImprovement(mean, standard_deviation, best_observed, xi=0.01):
 
     return ei
 
-def ProbabilityImprovement(mean, standard_deviation, best_observed, xi=0.01):
+def ProbabilityImprovement(mean, standard_deviation, best_observed=1.0, xi=0.01):
     """
     Compute the Probability of Improvement (PI) acquisition function value for a given set of parameters.
 
@@ -938,7 +939,7 @@ def ProbabilityImprovement(mean, standard_deviation, best_observed, xi=0.01):
 
     return pi
 
-def KnowledgeGradient(mean, standard_deviation, best_observed, xi=0.01):
+def KnowledgeGradient(mean, standard_deviation, best_observed=1.0, xi=0.01):
     """
     Compute the Knowledge Gradient (KG) acquisition function value for a given set of parameters.
 
@@ -968,7 +969,7 @@ def KnowledgeGradient(mean, standard_deviation, best_observed, xi=0.01):
 
     return kg
 
-def MaxValueEntropySearch(mean, standard_deviation, best_observed, num_samples=1000):
+def MaxValueEntropySearch(mean, standard_deviation, num_samples=1000):
     """
     Compute the Max-Value Entropy Search (MES) acquisition function value for a given set of parameters.
 
@@ -1001,7 +1002,7 @@ def MaxValueEntropySearch(mean, standard_deviation, best_observed, num_samples=1
     
     return mes_values
 
-def BayesianExpectedLoss(mean, standard_deviation, best_observed, xi=0.01):
+def BayesianExpectedLoss(mean, standard_deviation, best_observed=1.0, xi=0.01):
     """
     Compute the Bayesian Expected Loss (BEL) acquisition function value for a given set of parameters.
 
