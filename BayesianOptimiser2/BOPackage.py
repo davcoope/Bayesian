@@ -1,5 +1,3 @@
-### think about changing np to cp / running matrix multiplication on GPU
-
 import os
 import time
 import sys
@@ -214,11 +212,8 @@ class BO:
 
                         normalized_y = self.mean[self.max_index]
 
-                        if np.max(self.y_data - np.min(self.y_data)) == 0.0:
-                            sub_raw_y[j] = normalized_y
-                        else:
-                            shifted_y_data = self.y_data - np.min(self.y_data)
-                            sub_raw_y[j] = normalized_y * np.max(shifted_y_data) + np.min(self.y_data)
+                        if np.max(self.y_data) - np.min(self.y_data) != 0.0:
+                            sub_raw_y[j] = (normalized_y + 1) / 2 * (np.max(self.y_data) - np.min(self.y_data)) + np.min(self.y_data)
 
                     # Concatenate raw_X to the existing X_data array
                     self.X_data = np.vstack([self.X_data, sub_raw_X])
@@ -424,12 +419,8 @@ class BO:
         K_star = self.Kernel(self.X_data, candidate_x, self.length_scale)
         K_star_star = self.Kernel(candidate_x, candidate_x, self.length_scale) + jitter
 
-        # Shift and Normalize the observed data
-        shifted_y_data = self.y_data - np.min(self.y_data)
-        if np.max(shifted_y_data) == 0.0:
-            normalized_y_data = self.y_data
-        else:
-            normalized_y_data = shifted_y_data / np.max(shifted_y_data)
+        if np.max(self.y_data) - np.min(self.y_data) != 0.0:
+            normalized_y_data = 2 * (self.y_data - np.min(self.y_data)) / (np.max(self.y_data) - np.min(self.y_data)) - 1
 
         # Predict the mean of the new point
         mean = K_star.T.dot(K_inv).dot(normalized_y_data)  
@@ -664,11 +655,8 @@ def SausagePlot(object, highlight_recent=0, resolution=1000):
         plt.plot(sample_points, mean, label='mean')
         plt.fill_between(sample_points[:,0], mean[:,0] - 1.96 * np.sqrt(variance[:,0]), mean[:,0] + 1.96 * np.sqrt(variance[:,0]), color = 'blue', alpha=0.2, label = '95% confidence interval')
 
-        shifted_y_data = object.y_data - np.min(object.y_data)
-        if np.max(shifted_y_data) == 0.0:
-            normalized_y_data = object.y_data
-        else:
-            normalized_y_data = shifted_y_data / np.max(shifted_y_data)
+        if np.max(object.y_data) - np.min(object.y_data) != 0.0:
+            normalized_y_data = 2 * (object.y_data - np.min(object.y_data)) / (np.max(object.y_data) - np.min(object.y_data)) - 1
 
         plt.scatter(object.X_data, normalized_y_data, s=10)
         
@@ -720,16 +708,6 @@ def KappaAcquisitionFunctionPlot(object, number_kappas, number_candidate_points,
         
         # Predict the mean and variance for the sample points
         mean, variance = object.PredictMeanVariance(sample_points)
-
-        # Normalize the Y data for plotting
-        shifted_y_data = object.y_data - np.min(object.y_data)
-        if np.max(shifted_y_data) == 0.0:
-            normalized_y_data = object.y_data
-        else:
-            normalized_y_data = shifted_y_data / np.max(shifted_y_data)
-
-        # Plot the normalized data points on the graph
-        plt.scatter(object.X_data, normalized_y_data, s=10)
 
         # Iterate through each kappa value to calculate the acquisition function
         for i in range(number_kappas):
@@ -908,7 +886,7 @@ def ExpectedImprovement(mean, standard_deviation, best_observed=1.0, xi=0.01):
     ei = improvement * norm.cdf(Z) + standard_deviation * norm.pdf(Z)
     
     # Ensure non-negative EI values
-    ei = np.max(ei, 0)
+    # ei = np.max(ei, 0)
 
     return ei
 
