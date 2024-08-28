@@ -214,6 +214,7 @@ class BO:
 
                         if np.max(self.y_data) - np.min(self.y_data) != 0.0:
                             sub_raw_y[j] = (normalized_y + 1) / 2 * (np.max(self.y_data) - np.min(self.y_data)) + np.min(self.y_data)
+                        else: sub_raw_y[j] = normalized_y
 
                     # Concatenate raw_X to the existing X_data array
                     self.X_data = np.vstack([self.X_data, sub_raw_X])
@@ -421,6 +422,8 @@ class BO:
 
         if np.max(self.y_data) - np.min(self.y_data) != 0.0:
             normalized_y_data = 2 * (self.y_data - np.min(self.y_data)) / (np.max(self.y_data) - np.min(self.y_data)) - 1
+        else:
+            normalized_y_data = self.y_data
 
         # Predict the mean of the new point
         mean = K_star.T.dot(K_inv).dot(normalized_y_data)  
@@ -657,6 +660,9 @@ def SausagePlot(object, highlight_recent=0, resolution=1000):
 
         if np.max(object.y_data) - np.min(object.y_data) != 0.0:
             normalized_y_data = 2 * (object.y_data - np.min(object.y_data)) / (np.max(object.y_data) - np.min(object.y_data)) - 1
+        else:
+            normalized_y_data = object.y_data
+
 
         plt.scatter(object.X_data, normalized_y_data, s=10)
         
