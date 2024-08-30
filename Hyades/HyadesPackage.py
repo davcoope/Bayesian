@@ -359,30 +359,32 @@ class Hyades:
 
         return raw_y
 
-    def DeleteFiles(self, raw_y, iteration_number, stuck_in_peak_flag, batch_size):   
+    def DeleteFiles(self, raw_y, iteration_number, no_improvement_flag, batch_size):   
         """
-        Delete files from the previous iteration if the optimizer is stuck in a peak.
+        Delete files from the current iteration if the optimizer is stuck in a peak.
 
-        This method deletes the directories of simulations that did not produce the best result 
-        from the previous iteration. If the optimizer is stuck in a peak, it deletes the entire 
+        This method deletes the directories of simulations that did not produce the best result
+        from the previous iteration. If the optimizer is stuck in a peak, it deletes the entire
         directory for the previous iteration.
 
         Parameters:
-        - raw_y (1D array): The output results from the current iteration.
+        - raw_y (ndarray): The output results from the current iteration.
         - iteration_number (int): The current iteration number.
+        - no_improvement_flag (int): Flag indicating whether there was no improvement (1 if no improvement, 0 if improvement).
+        - batch_size (int): The number of simulations in the batch.
         """
         # Check if the optimizer is stuck in a peak
-        if stuck_in_peak_flag == 0:
+        if no_improvement_flag == 0:
             # Find the index of the best result from the current iteration
             best_result_index = np.argmax(raw_y)
-            self.logger.info(f'The most recent iteration (iteration {iteration_number-1}) produced a better result than previous iterations')
+            self.logger.info(f'The current iteration (iteration {iteration_number}) produced a better result than previous iterations')
             
             # Iterate over each simulation in the batch
             for i in range(batch_size):
                 if i != best_result_index:
                     try:
                         # Remove the sub-directory corresponding to simulations that were not the best
-                        subprocess.run(['rm', '-rf', self.output_directory + '/I' + f'{iteration_number-1}' + '/S' + f'{i}'], check=True, text=True, capture_output=True)
+                        subprocess.run(['rm', '-rf', self.output_directory + '/I' + f'{iteration_number}' + '/S' + f'{i}'], check=True, text=True, capture_output=True)
                         self.logger.info(f"Directory removed successfully.")
                     except subprocess.CalledProcessError as e:
                         self.logger.info(f"Error: {e.stderr}")
@@ -392,7 +394,7 @@ class Hyades:
                         self.logger.info(f"Error: You do not have permission to delete.")
             
             # Iterate over all previous iterations to remove corresponding directories
-            for i in range(iteration_number - 1):
+            for i in range(iteration_number):
                 try:
                     subprocess.run(['rm', '-rf', self.output_directory + '/I' + f'{i}'], check=True, text=True, capture_output=True)
                     self.logger.info(f"Directory removed successfully.")
@@ -404,10 +406,10 @@ class Hyades:
                     self.logger.info(f"Error: You do not have permission to delete.")
                 
         else: 
-            self.logger.info(f'The most recent iteration (iteration {iteration_number-1}) did not produce a better result than previous iterations')
+            self.logger.info(f'The current iteration (iteration {iteration_number}) did not produce a better result than previous iterations')
             try:
                 # Remove the entire directory for the previous iteration if stuck in peak
-                subprocess.run(['rm', '-rf', self.output_directory + '/I' + f'{iteration_number-1}'], check=True, text=True, capture_output=True)
+                subprocess.run(['rm', '-rf', self.output_directory + '/I' + f'{iteration_number}'], check=True, text=True, capture_output=True)
                 self.logger.info(f"Directory removed successfully.")
             except subprocess.CalledProcessError as e:
                 self.logger.info(f"Error: {e.stderr}")

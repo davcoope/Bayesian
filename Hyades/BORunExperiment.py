@@ -133,6 +133,11 @@ for i in range(Variables.random_iterations):
     bo.WriteOutputToCSV(Variables.csv_path, raw_X, raw_y)
     # Update the internal data storage with the new X and Y values
     bo.UpdateData(raw_X, raw_y)
+    
+    if bo.dynamic_bounds is False:
+        bo.CheckImprovement()  # Necessary for deleting files in order to know which files to keep
+
+    hyades.DeleteFiles(raw_y, i, bo.no_improvement_flag, Variables.random_batch_size)
 
     bo.LogCurrentStatus()
 
@@ -144,5 +149,10 @@ for i in range(Variables.iterations):
     bo.WriteOutputToCSV(Variables.csv_path, raw_X, raw_y)
     # Update the internal data storage with the new X and Y values
     bo.UpdateData(raw_X, raw_y)
+
+    if bo.dynamic_bounds is False:
+        bo.CheckImprovement()  # Necessary for deleting files in order to know which files to keep
+
+    hyades.DeleteFiles(raw_y, i+Variables.random_iterations, bo.no_improvement_flag, Variables.batch_size)
 
     bo.LogCurrentStatus()
