@@ -563,7 +563,7 @@ class BO:
             best_index = heapq.nlargest(1, relevant_indices, key=self.y_data.__getitem__)
         else:
         # Find the index of the smallest value in the most recent batch if minimizing
-                best_index = heapq.nsmallest(1, relevant_indices, key=self.y_data.__getitem__)
+            best_index = heapq.nsmallest(1, relevant_indices, key=self.y_data.__getitem__)
         
         # Retrieve the best Y value from the identified index
         best_value = [self.y_data[i] for i in best_index]
